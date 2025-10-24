@@ -1,0 +1,25 @@
+# SQLite DB files (keep schema/SQL, ignore generated DBs)
+*.sqlite3
+*.sqlite
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+
+# Keep the data folder but ignore DB files inside
+data/*.sqlite3
+data/*.db
+data/*.sqlite
+data/*.db-*
+
+# macOS cruft
+.DS_Store
+
+# Ruby/Bundler (if used)
+vendor/bundle/
+.bundle/
+.byebug_history
+
+# Logs/temp (if you add scripts that write logs)
+log/
+tmp/
