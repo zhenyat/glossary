@@ -1,0 +1,10 @@
+https://lmarena.ai/c/019a10cc-c5f8-79ed-81de-96e53b661319
+
+When you’re ready to continue, I can help with any of these:
+
+Add a small FTS search CLI (scripts/search.rb) for quick querying
+Optional triggers to auto-update updated_at on raw SQL edits
+More seeds (Ruby/Python/Git, Unix, SQL examples), or sample bilingual lessons
+A tiny web UI (Sinatra/Roda) to browse/search terms
+Packaging (Makefile, CI checks) and a v0.1.0 release tag
+Ping me anytime—I'll pick up right where we left off.

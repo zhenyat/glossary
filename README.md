@@ -1,30 +1,36 @@
 # Glossary App (EN/RU) — SQLite + ActiveRecord
 
-A bilingual glossary and command examples app designed for teaching Russian-speaking novices. It uses a clean SQLite schema, Ruby ActiveRecord for migrations/models, soft deletes, and FTS5 for fast full-text search over terms.
+A bilingual glossary and command examples app designed for teaching Russian-speaking novices. It uses a clean SQLite schema, Ruby ActiveRecord migrations, soft deletes (deleted_on), and FTS5 for fast full‑text search.
 
-Note on timestamps: `updated_at` is application-managed. ActiveRecord updates it automatically; if you modify rows via raw SQL, update `updated_at` yourself (or add DB triggers if you want auto-updates at the DB level).
+What’s new
+- Default DB name: `glossary.sqlite3`
+- Examples convention: `examples.title` contains the command snippet; `examples.descr_en` contains the human‑readable phrase (EN), `examples.descr_ru` the RU phrase
+- Two setup paths supported:
+  - Raw SQL via zsh (applies SQL DDL, then category seed; full content seed needs one extra step)
+  - Ruby via a Rails‑less migration runner (migrate + seed everything end‑to‑end)
+
 
 ## Highlights
 
-- SQLite schema with categories, terms, commands, examples
-- Soft delete via `deleted_on` (keeps history; no destructive cascades)
-- Referential integrity with explicit FK actions (RESTRICT/CASCADE)
-- FTS5 external-content index on `terms` with sync triggers (active rows only)
-- Two setup paths:
-  - zsh script applying raw SQL from `./sql`
-  - Ruby script running ActiveRecord migrations + Ruby seeds
-- Category seeds included (EN/RU)
-- All code files include a header banner for clarity and provenance
+- Tables: categories, terms, commands, examples (+ FTS5 index: terms_fts)
+- Soft delete via `deleted_on` (no destructive cascades by default)
+- FKs: RESTRICT on categories → terms/commands; CASCADE on commands → examples
+- Partial unique indexes scoped to active rows (`deleted_on IS NULL`)
+- FTS5 (unicode61) indexing `terms` for EN/RU search
+- Two setup paths: zsh (raw SQL) or Ruby (migrations + seeds)
+- Header banner on all code files
+
 
 ## Prerequisites
 
-- macOS (Sonoma or later)
+- macOS Sonoma or later
 - SQLite 3.50.4+ with FTS5 enabled  
   Check:
-    - `sqlite3 -line ":memory:" "SELECT sqlite_compileoption_used('ENABLE_FTS5') AS fts5;"` should show `fts5 = 1`
+    - `sqlite3 -line ":memory:" "SELECT sqlite_compileoption_used('ENABLE_FTS5') AS fts5;"` → should show `fts5 = 1`
 - Ruby 3.4.7
-  - Gems: `activerecord` 8.0.3, `sqlite3`
-- Optional: VS Code (for dev)
+  - Gems: `activerecord` (8.x), `sqlite3`
+- Optional: VS Code
+
 
 ## Quick start
 
@@ -32,23 +38,30 @@ You have two equivalent ways to set up the database. Choose one per DB file (don
 
 ### Option A) zsh (raw SQL from ./sql)
 
-1) Create the DB (and seed categories):
+1) Create/reset the DB (and seed categories):
     
     mkdir -p ./data
     chmod +x scripts/sql_setup.zsh
     ./scripts/sql_setup.zsh --db ./data/glossary.sqlite3 --rebuild
 
-2) Inspect:
+2) Load full content (terms, commands, examples):
+    
+    sqlite3 ./data/glossary.sqlite3 < db/seeds/20251024000010_terms_commands_examples.sql
+
+3) Inspect:
     
     sqlite3 ./data/glossary.sqlite3 ".tables"
 
-### Option B) Ruby (ActiveRecord migrations + Ruby seeds)
+Notes:
+- The zsh script reads schema SQL from `./sql` and seeds only categories by default (`db/seeds/20251023000000_categories.sql`). Run the consolidated seed SQL once to populate all content.
+
+### Option B) Ruby (migrations + seeds; Rails‑less runner)
 
 1) Install gems:
     
     gem install activerecord sqlite3
 
-2) Run migrations and seeds:
+2) Run full reset (migrate + seed all Ruby seeds):
     
     DB_PATH=./data/glossary.sqlite3 ruby scripts/ar_setup.rb reset
 
@@ -56,35 +69,45 @@ You have two equivalent ways to set up the database. Choose one per DB file (don
     
     sqlite3 ./data/glossary.sqlite3 ".tables"
 
-Tip: If you switch methods on the same DB file, delete the DB first (use `--rebuild` or `reset`).
+Other commands:
+- Migrate only: `DB_PATH=./data/glossary.sqlite3 ruby scripts/ar_setup.rb migrate`
+- Seed only: `DB_PATH=./data/glossary.sqlite3 ruby scripts/ar_setup.rb seed`
+- Status: `DB_PATH=./data/glossary.sqlite3 ruby scripts/ar_setup.rb status`
 
-## What’s inside (schema overview)
+The AR runner:
+- Loads migration classes from `db/migrate/*.rb` and calls `migrate(:up)` in order
+- Records versions in `schema_migrations` using simple SQL (no Rails internals)
+- Loads all Ruby seeds from `db/seeds/*.rb` in filename order
+
+
+## Schema overview
 
 Tables
 - `categories`
   - `id`, `name_en` (unique among active), `name_ru`
   - `created_at`, `updated_at`, `deleted_on`
 - `terms`
-  - `id`, `category_id` (FK→categories, RESTRICT), `en`, `abbr_en`, `ru`, `abbr_ru`, `descr_en`, `descr_ru`
+  - `id`, `category_id` (FK→categories RESTRICT), `en`, `abbr_en`, `ru`, `abbr_ru`, `descr_en`, `descr_ru`
   - `created_at`, `updated_at`, `deleted_on`
-  - Uniqueness: `(category_id, en)` among active rows
+  - Unique among active: `(category_id, en)`
 - `commands`
-  - `id`, `category_id` (FK→categories, RESTRICT), `title`, `descr_en`, `descr_ru`
+  - `id`, `category_id` (FK→categories RESTRICT), `title`, `descr_en`, `descr_ru`
   - `created_at`, `updated_at`, `deleted_on`
-  - Uniqueness: `(category_id, title)` among active rows
+  - Unique among active: `(category_id, title)`
 - `examples`
-  - `id`, `command_id` (FK→commands, CASCADE), `title`, `descr_en`, `descr_ru`
+  - `id`, `command_id` (FK→commands CASCADE), `title` (snippet), `descr_en` (phrase EN), `descr_ru` (phrase RU)
   - `created_at`, `updated_at`, `deleted_on`
-  - Uniqueness: `(command_id, title)` among active rows
+  - Unique among active: `(command_id, title)`
 
 Full‑Text Search
-- `terms_fts` (FTS5, external-content on `terms` with `content_rowid = id`)
-- Triggers keep it in sync for INSERT/UPDATE/DELETE
-- Index stores only active (`deleted_on IS NULL`) terms
+- `terms_fts` (FTS5, external‑content for `terms` with `content_rowid=id`)
+- Triggers keep it synced on insert/update/delete
+- Only active `terms` are indexed (`deleted_on IS NULL`)
 
-## Seed categories
 
-Included categories (`name_en` → `name_ru`):
+## Seeded categories
+
+`name_en` → `name_ru`
 - `common` → Общая лексика
 - `it-general` → ИТ (общее)
 - `programming` → Программирование
@@ -103,58 +126,60 @@ Included categories (`name_en` → `name_ru`):
 - `data-formats` → Форматы данных
 - `finance` → Финансы
 
-Seeds are provided both as:
-- `db/seeds/20251023000000_categories.rb` (ActiveRecord)
-- `db/seeds/20251023000000_categories.sql` (sqlite3 CLI)
+Seeds
+- Categories (kept as‑is): `db/seeds/20251023000000_categories.rb` and `.sql`
+- Consolidated content (terms, commands, examples): `db/seeds/20251024000010_terms_commands_examples.rb` and `.sql`
+
 
 ## Searching with FTS5
 
-- Exact/prefix search:
-    
-    SELECT t.*
+Do not alias the FTS table on the left of MATCH. Use the table name.
+
+- Basic search:
+    ```
+    SELECT t.id, t.en, t.ru
     FROM terms t
-    JOIN terms_fts f ON f.rowid = t.id
-    WHERE t.deleted_on IS NULL AND f MATCH 'json OR yaml'
-    ORDER BY bm25(f)
-    LIMIT 20;
-
-- Prefix example:
-    
-    SELECT t.*
-    FROM terms t
-    JOIN terms_fts f ON f.rowid = t.id
-    WHERE t.deleted_on IS NULL AND f MATCH 'pos*';
-
-- Snippets/highlights:
-    
-    SELECT highlight(f, 0, '<b>','</b>') AS en_hl
-    FROM terms_fts f
-    WHERE f MATCH 'join';
-
-- Maintenance:
-    
+    JOIN terms_fts ON terms_fts.rowid = t.id
+    WHERE t.deleted_on IS NULL
+      AND terms_fts MATCH 'json OR yaml'
+    ORDER BY bm25(terms_fts)
+    LIMIT 10;
+    ```
+- With highlighting and category:
+    ```
+    SELECT c.name_en AS category,
+           t.en,
+           highlight(terms_fts, 0, '[', ']') AS en_hl,
+           highlight(terms_fts, 1, '[', ']') AS ru_hl,
+           bm25(terms_fts) AS rank
+    FROM terms_fts
+    JOIN terms t ON terms_fts.rowid = t.id
+    JOIN categories c ON c.id = t.category_id
+    WHERE t.deleted_on IS NULL
+      AND terms_fts MATCH 'json OR yaml'
+    ORDER BY rank
+    LIMIT 10;
+    ```
+- Rebuild index (rarely needed):
+    ```
     INSERT INTO terms_fts(terms_fts) VALUES('rebuild');
-    INSERT INTO terms_fts(terms_fts) VALUES('optimize');
+    ```
 
-Tokenizer: `unicode61` is used; it handles Latin and Cyrillic well. There’s no built-in Russian stemming; typically fine for a glossary.
+## Optional helper scripts
 
-Soft delete interaction: Updating `deleted_on` will remove/add rows from the FTS index via the UPDATE trigger (active rows only are indexed).
+- Search CLI (FTS):
+  - `scripts/search.rb`
+  - Usage:
+    - `DB_PATH=./data/glossary.sqlite3 ruby scripts/search.rb "json OR yaml"`
+    - `DB_PATH=./data/glossary.sqlite3 ruby scripts/search.rb -c sql "join"`
+    - `DB_PATH=./data/glossary.sqlite3 ruby scripts/search.rb -l 5 "json*"`
 
-## ActiveRecord models and integrity
+- Auto‑update `updated_at` on raw SQL updates (SQLite triggers):
+  - `sql/triggers_update_updated_at.sql`
+  - Apply:
+    
+        sqlite3 ./data/glossary.sqlite3 < sql/triggers_update_updated_at.sql
 
-Associations
-- Category `has_many` Terms (restrict on delete)
-- Category `has_many` Commands (restrict on delete)
-- Command `has_many` Examples (cascade on delete)
-
-Soft deletes
-- Term/Command/Example include a `SoftDeletable` concern:
-  - `destroy` → soft deletes (sets `deleted_on`)
-  - `hard_destroy!` → permanent delete (respecting DB FK actions)
-
-Uniqueness
-- Partial unique indexes ensure uniqueness applies only to active rows (`deleted_on IS NULL`)
-- English fields use `COLLATE NOCASE`; note that NOCASE doesn’t fully cover Russian collation
 
 ## Directory layout
 
@@ -164,6 +189,7 @@ Uniqueness
   - `create_commands.sql`
   - `create_examples.sql`
   - `create_terms_fts.sql`
+  - `triggers_update_updated_at.sql` (optional)
 - `db/`
   - `migrate/`
     - `20251023000001_create_core_tables.rb`
@@ -171,6 +197,8 @@ Uniqueness
   - `seeds/`
     - `20251023000000_categories.rb`
     - `20251023000000_categories.sql`
+    - `20251024000010_terms_commands_examples.rb`
+    - `20251024000010_terms_commands_examples.sql`
 - `app/`
   - `models/`
     - `application_record.rb`
@@ -178,45 +206,39 @@ Uniqueness
     - `term.rb`
     - `command.rb`
     - `example.rb`
-    - `concerns/`
-      - `soft_deletable.rb`
+    - `concerns/soft_deletable.rb`
 - `scripts/`
-  - `sql_setup.zsh`  (zsh raw SQL)
+  - `sql_setup.zsh`  (zsh raw SQL path)
   - `sql_setup.sh`   (POSIX /bin/sh alternative)
-  - `ar_setup.rb`    (ActiveRecord migrations + seeds)
+  - `ar_setup.rb`    (Rails‑less migration runner + seeds)
+  - `search.rb`      (FTS search CLI, optional)
 
-All code files include a header banner (File, Purpose, Author, Date).
 
 ## Development workflow
 
-- Prefer the ActiveRecord migrations as the source of truth for schema changes.
-- Keep SQL DDL files in sync if you intend to support the raw-SQL path.
-- When updating records via raw SQL, remember to update `updated_at` manually if desired.
-- Foreign keys:
-  - `PRAGMA foreign_keys = ON` must be enabled per connection. Scripts enable this for you.
+- Prefer AR migrations as source of truth for schema evolution
+- Keep the `./sql` DDL files in sync only if you plan to keep supporting the raw‑SQL setup path
+- Soft deletes: set `deleted_on` instead of hard‑deleting; triggers ensure FTS drops inactive terms
+- Foreign keys: scripts enable `PRAGMA foreign_keys = ON` per connection
+
 
 ## Troubleshooting
 
 - FTS5 unavailable  
   Symptom: `CREATE VIRTUAL TABLE ... fts5` fails.  
   Check: `SELECT sqlite_compileoption_used('ENABLE_FTS5');`  
-  Fix (macOS/Homebrew): `brew install sqlite`; then ensure your PATH uses Homebrew `sqlite3` first.
+  Fix (Homebrew): `brew install sqlite` and ensure your PATH uses Homebrew `sqlite3`.
 
-- SQLite3 Ruby gem linking issues (macOS)  
-  `gem install sqlite3` sometimes links against system SQLite.  
-  Try: `bundle config build.sqlite3 --with-sqlite3-dir="$(brew --prefix sqlite)"` and `bundle install`.
+- Raw SQL path seeded only categories  
+  Run the consolidated content seed:
+    - `sqlite3 ./data/glossary.sqlite3 < db/seeds/20251024000010_terms_commands_examples.sql`
 
-- Uniqueness with Russian strings  
-  `COLLATE NOCASE` is primarily ASCII; for full Cyrillic collation you’d need ICU collations via extension (optional/advanced).
+- AR path “status”/internals  
+  The provided `ar_setup.rb` is Rails‑less and records versions directly in `schema_migrations`, avoiding AR 8.x internal API changes.
 
-## Example: AR FTS search scope (optional)
+- Russian collation/uniqueness  
+  `COLLATE NOCASE` is primarily ASCII. For full Cyrillic collation you’d need ICU (advanced; optional).
 
-In a Rails-ish context:
-
-    Term.joins("JOIN terms_fts f ON f.rowid = terms.id")
-        .where("terms.deleted_on IS NULL AND f MATCH ?", "json OR yaml")
-        .order(Arel.sql("bm25(f)"))
-        .limit(20)
 
 ## License
 
