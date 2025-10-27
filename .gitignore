@@ -1,9 +1,20 @@
+### 2025-10-29  Updated with Crome AI
+
 # SQLite DB files (keep schema/SQL, ignore generated DBs)
 *.sqlite3
 *.sqlite
 *.db
-*.db-shm
+# Write-Ahead Log
+*.sqlite3-wal
+*.sqlite-wal
 *.db-wal
+# Shared Memory)
+*.sqlite3-shm
+*.sqlite-shm
+*.db-shm
+# Journal
+*.sqlite3-journal
+*.sqlite-journal
 *.db-journal
 
 # Keep the data folder but ignore DB files inside
