@@ -211,19 +211,12 @@ DB_PATH=./data/glossary.sqlite3 ruby scripts/console.rb
 ```
 Inside the console, use:
 - `help`   - Lists available helpers.
-
 - `tables`  - Lists all tables/views (excluding SQLite internals).
-
 - `schema('terms')`  - Prints the CREATE DDL for the given table/view.
-
 - `sql('SELECT count(*) AS cnt FROM terms')`  - Runs raw SQL and returns an array of hashes.
-
 - `fts('json OR yaml')`  - Runs an FTS search over terms with ranking and highlights.
-
 - `fts('join', category: 'sql', limit: 5)`  - FTS search limited to the SQL category, returning top 5.
-
 - `reload!`  - Reloads models (after code changes) without restarting the console.
-
 - `conn`  - ActiveRecord connection
 
 Example session:
