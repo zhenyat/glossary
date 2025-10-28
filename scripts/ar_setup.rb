@@ -1,3 +1,4 @@
+#! /usr/bin/env ruby
 ################################################################################
 #   File:     scripts/ar_setup.rb
 #   Purpose:  ActiveRecord connect + run migrations + load Ruby seeds (Rails-less)

@@ -58,17 +58,17 @@ Notes:
 ### Option B) Ruby (migrations + seeds; Rails‑less runner)
 
 1) Install gems:
-```    
+    
     gem install activerecord sqlite3
-```
+
 2) Run full reset (migrate + seed all Ruby seeds):
-```    
+    
     DB_PATH=./data/glossary.sqlite3 ruby scripts/ar_setup.rb reset
-```
+
 3) Inspect:
-```   
+    
     sqlite3 ./data/glossary.sqlite3 ".tables"
-```
+
 Other commands:
 - Migrate only: `DB_PATH=./data/glossary.sqlite3 ruby scripts/ar_setup.rb migrate`
 - Seed only: `DB_PATH=./data/glossary.sqlite3 ruby scripts/ar_setup.rb seed`
@@ -136,7 +136,7 @@ Seeds
 Do not alias the FTS table on the left of MATCH. Use the table name.
 
 - Basic search:
-```    
+    ```
     SELECT t.id, t.en, t.ru
     FROM terms t
     JOIN terms_fts ON terms_fts.rowid = t.id
@@ -144,9 +144,9 @@ Do not alias the FTS table on the left of MATCH. Use the table name.
       AND terms_fts MATCH 'json OR yaml'
     ORDER BY bm25(terms_fts)
     LIMIT 10;
-```
+    ```
 - With highlighting and category:
-```    
+    ```
     SELECT c.name_en AS category,
            t.en,
            highlight(terms_fts, 0, '[', ']') AS en_hl,
@@ -159,100 +159,27 @@ Do not alias the FTS table on the left of MATCH. Use the table name.
       AND terms_fts MATCH 'json OR yaml'
     ORDER BY rank
     LIMIT 10;
-```
+    ```
 - Rebuild index (rarely needed):
-```    
+    ```
     INSERT INTO terms_fts(terms_fts) VALUES('rebuild');
-```
+    ```
 
-## Helper scripts
+## Optional helper scripts
 
-### 1) Search CLI (scripts/search.rb)
+- Search CLI (FTS):
+  - `scripts/search.rb`
+  - Usage:
+    - `DB_PATH=./data/glossary.sqlite3 ruby scripts/search.rb "json OR yaml"`
+    - `DB_PATH=./data/glossary.sqlite3 ruby scripts/search.rb -c sql "join"`
+    - `DB_PATH=./data/glossary.sqlite3 ruby scripts/search.rb -l 5 "json*"`
 
-Run ranked FTS searches from the terminal, with optional category filter and limit.
+- Auto‑update `updated_at` on raw SQL updates (SQLite triggers):
+  - `sql/triggers_update_updated_at.sql`
+  - Apply:
+    
+        sqlite3 ./data/glossary.sqlite3 < sql/triggers_update_updated_at.sql
 
-Usage:
-- Basic:
-```  
-  DB_PATH=./data/glossary.sqlite3 ruby scripts/search.rb "json OR yaml"
-```
-- Filter by category:
-``` 
-  DB_PATH=./data/glossary.sqlite3 ruby scripts/search.rb -c sql "join"
-```
-- Prefix search (term starts with …):
-```  
-  DB_PATH=./data/glossary.sqlite3 ruby scripts/search.rb -l 5 "json*"
-```
-What the samples do:
-- "json OR yaml" searches the FTS index for either token. You’ll see results like:
-  - [data-formats] rank=-8.061 en: [YAML] ru: [YAML]
-  - [data-formats] rank=-3.338 en: [JSON] ru: [JSON]
-  Explanation:
-  - Rank is bm25 score (lower is better; often negative in SQLite’s bm25).
-  - Highlighted tokens are wrapped in [brackets] via highlight(...).
-
-- "-c sql 'join'" restricts results to the SQL category and searches for “join”. It will return the SQL term “JOIN” with highlights.
-
-- "-l 5 'json*'" enables prefix search (tokens starting with json). Note:
-  - FTS5 supports '*'-suffix prefix queries. Without FTS prefix indexes, this is fine for small datasets; for very large datasets, consider FTS5 prefix options.
-
-Notes:
-- The script quotes your query internally; pass the query as a single shell argument (use single quotes in zsh/bash).
-- The search is against the FTS index (terms_fts). Only active terms (deleted_on IS NULL) are indexed.
-
-### 2) Interactive Console (scripts/console.rb)
-
-Open IRB with ActiveRecord connected, models loaded, and handy helpers.
-
-Launch:
-```
-DB_PATH=./data/glossary.sqlite3 ruby scripts/console.rb
-```
-Inside the console, use:
-- `help`   - Lists available helpers.
-
-- `tables`  - Lists all tables/views (excluding SQLite internals).
-
-- `schema('terms')`  - Prints the CREATE DDL for the given table/view.
-
-- `sql('SELECT count(*) AS cnt FROM terms')`  - Runs raw SQL and returns an array of hashes.
-
-- `fts('json OR yaml')`  - Runs an FTS search over terms with ranking and highlights.
-
-- `fts('join', category: 'sql', limit: 5)`  - FTS search limited to the SQL category, returning top 5.
-
-- `reload!`  - Reloads models (after code changes) without restarting the console.
-
-- `conn`  - ActiveRecord connection
-
-Example session:
-```
-> help
-> tables
-> schema('terms')
-> sql('SELECT count(*) AS cnt FROM terms')
-> fts('json OR yaml')
-> fts('join', category: 'sql', limit: 5)
-```
-
-You’ll see output similar to the CLI search:
-- Each result shows [category], bm25 rank, and highlighted matches for en/ru.
-
-Tip:
-- The console enables `PRAGMA foreign_keys = ON` automatically.
-
-
-## Optional triggers for updated_at
-
-Keep `updated_at` current when modifying rows via raw SQL.
-
-File: `sql/triggers_update_updated_at.sql`
-
-Apply: 
-```
-sqlite3 ./data/glossary.sqlite3 < sql/triggers_update_updated_at.sql
-```
 
 ## Directory layout
 
@@ -284,8 +211,7 @@ sqlite3 ./data/glossary.sqlite3 < sql/triggers_update_updated_at.sql
   - `sql_setup.zsh`  (zsh raw SQL path)
   - `sql_setup.sh`   (POSIX /bin/sh alternative)
   - `ar_setup.rb`    (Rails‑less migration runner + seeds)
-  - `search.rb`      (FTS search CLI)
-  - `console.rb`     (IRB with AR connected + helpers)
+  - `search.rb`      (FTS search CLI, optional)
 
 
 ## Development workflow
@@ -307,7 +233,7 @@ sqlite3 ./data/glossary.sqlite3 < sql/triggers_update_updated_at.sql
   Run the consolidated content seed:
     - `sqlite3 ./data/glossary.sqlite3 < db/seeds/20251024000010_terms_commands_examples.sql`
 
-- AR path avoids fragile internals  
+- AR path “status”/internals  
   The provided `ar_setup.rb` is Rails‑less and records versions directly in `schema_migrations`, avoiding AR 8.x internal API changes.
 
 - Russian collation/uniqueness  
