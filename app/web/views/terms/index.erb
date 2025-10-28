@@ -1,0 +1,80 @@
+<%##############################################################################
+#   File:     app/web/views/terms/index.erb
+#   Purpose:  Terms list + search + filter + pagination
+#   Author:   ChatGPT (GPT-4.1)
+#   Date:     2025-10-28
+##############################################################################%>
+<div class="card mb-3">
+  <div class="card-body">
+    <form class="row g-2" method="get" action="/terms">
+      <div class="col-md-6">
+        <input class="form-control" type="text" name="q" value="<%= h(@q) %>" placeholder="Search (FTS syntax: json OR yaml, en:json, ru:...)">
+      </div>
+      <div class="col-md-3">
+        <select class="form-select" name="category_id">
+          <option value="">All categories</option>
+          <% @categories.each do |c| %>
+            <option value="<%= c.id %>" <%= "selected" if @category_id.to_s == c.id.to_s %>><%= h(c.name_en) %></option>
+          <% end %>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <select class="form-select" name="per">
+          <% [10,20,50,100].each do |n| %>
+            <option value="<%= n %>" <%= "selected" if per_page==n %>><%= n %>/page</option>
+          <% end %>
+        </select>
+      </div>
+      <div class="col-md-1 d-grid">
+        <button class="btn btn-primary">Search</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<table class="table table-sm table-hover align-middle">
+  <thead>
+    <tr>
+      <th style="width: 18%">Category</th>
+      <th style="width: 22%">EN</th>
+      <th style="width: 22%">RU</th>
+      <th>Descr (EN)</th>
+      <th style="width: 14%"></th>
+    </tr>
+  </thead>
+  <tbody>
+    <% @rows.each do |r| %>
+      <tr class="<%= r["deleted_on"] ? "table-warning" : "" %>">
+        <td><%= h(r["category_name"]) %></td>
+        <td><%= (r["en_hl"] && !r["en_hl"].empty?) ? r["en_hl"] : h(r["en"]) %></td>
+        <td><%= (r["ru_hl"] && !r["ru_hl"].empty?) ? r["ru_hl"] : h(r["ru"]) %></td>
+        <td><%= h(r["descr_en"].to_s[0,160]) %></td>
+        <td class="text-end">
+          <a class="btn btn-sm btn-outline-secondary" href="/terms/<%= r["id"] %>/edit">Edit</a>
+          <% if r["deleted_on"].nil? %>
+            <form class="d-inline" method="post" action="/terms/<%= r["id"] %>/delete">
+              <button class="btn btn-sm btn-outline-danger" onclick="return confirm('Soft-delete this term?')">Delete</button>
+            </form>
+          <% else %>
+            <form class="d-inline" method="post" action="/terms/<%= r["id"] %>/restore">
+              <button class="btn btn-sm btn-outline-success">Restore</button>
+            </form>
+          <% end %>
+        </td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>
+
+<nav>
+  <ul class="pagination">
+    <% prev_page = page-1; next_page = page+1 %>
+    <li class="page-item <%= 'disabled' if page<=1 %>">
+      <a class="page-link" href="?q=<%= h(@q) %>&category_id=<%= h(@category_id) %>&per=<%= per_page %>&page=<%= [page-1,1].max %>">Prev</a>
+    </li>
+    <li class="page-item active"><span class="page-link"><%= page %></span></li>
+    <li class="page-item">
+      <a class="page-link" href="?q=<%= h(@q) %>&category_id=<%= h(@category_id) %>&per=<%= per_page %>&page=<%= page+1 %>">Next</a>
+    </li>
+  </ul>
+</nav>

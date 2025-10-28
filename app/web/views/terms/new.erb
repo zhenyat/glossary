@@ -1,0 +1,11 @@
+<%##############################################################################
+#   File:     app/web/views/terms/new.erb
+#   Purpose:  Create term page
+#   Author:   ChatGPT (GPT-4.1)
+#   Date:     2025-10-28
+##############################################################################%>
+<% @title = "New term" %>
+<h3>New term</h3>
+<form method="post" action="/terms">
+  <%= erb :"terms/_form" %>
+</form>

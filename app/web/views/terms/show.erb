@@ -1,0 +1,19 @@
+<%##############################################################################
+#   File:     app/web/views/terms/show.erb
+#   Purpose:  Show term detail (optional)
+#   Author:   ChatGPT (GPT-4.1)
+#   Date:     2025-10-28
+##############################################################################%>
+<h3><%= h(@term.en) %> / <%= h(@term.ru) %></h3>
+<p class="text-muted"><strong>Category:</strong> <%= h(@term.category&.name_en) %></p>
+<div class="row">
+  <div class="col-md-6">
+    <h6>EN</h6>
+    <pre><%= h(@term.descr_en) %></pre>
+  </div>
+  <div class="col-md-6">
+    <h6>RU</h6>
+    <pre><%= h(@term.descr_ru) %></pre>
+  </div>
+</div>
+<a class="btn btn-outline-secondary mt-3" href="/terms">Back</a>
