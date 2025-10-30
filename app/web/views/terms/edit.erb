@@ -1,0 +1,14 @@
+<%##############################################################################
+#   File:     app/web/views/terms/edit.erb
+#   Purpose:  Create term page
+#   Author:   ChatGPT (GPT-4.1)
+#   Date:     2025-10-30
+#   Updated:  2025-10-30  Includes CSRF token on mutating forms
+##############################################################################%>
+<% @title = "Edit term" %>
+<h3>Edit term</h3>
+
+<form method="post" action="/terms/<%= @term.id %>">
+  <input type="hidden" name="_method" value="put">
+  <%= erb :"terms/_form" %>
+</form>
