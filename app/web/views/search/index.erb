@@ -1,0 +1,140 @@
+<%#
+################################################################################
+#   File:     app/web/views/search/index.erb
+#   Purpose:  Combined search (Terms via FTS + Commands via LIKE) with tabs
+#   Author:   ChatGPT (GPT-4.1)
+#   Date:     2025-10-30
+################################################################################
+%>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <form class="row g-2" method="get" action="/search">
+      <div class="col-md-5">
+        <input class="form-control" type="text" name="q" value="<%= h(@q) %>"
+               placeholder="Search terms and commands (e.g. json OR yaml, en:json, ru:... )">
+      </div>
+      <div class="col-md-3">
+        <select class="form-select" name="category_id">
+          <option value="">All categories</option>
+          <% @categories.each do |c| %>
+            <option value="<%= c.id %>" <%= "selected" if @category_id.to_s == c.id.to_s %>>
+              <%= h(c.name_en) %>
+            </option>
+          <% end %>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <select class="form-select" name="per">
+          <% [10,20,50,100].each do |n| %>
+            <option value="<%= n %>" <%= "selected" if per_page==n %>><%= n %>/page</option>
+          <% end %>
+        </select>
+      </div>
+      <div class="col-md-2 d-flex align-items-center">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="show_deleted" name="show_deleted" value="1" <%= "checked" if show_deleted? %>>
+          <label class="form-check-label" for="show_deleted">Show deleted</label>
+        </div>
+      </div>
+      <div class="col-12 d-grid">
+        <button class="btn btn-primary">Search</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<ul class="nav nav-tabs mb-3">
+  <li class="nav-item">
+    <a class="nav-link <%= @active_tab == 'terms' ? 'active' : '' %>"
+       href="/search?<%= URI.encode_www_form(q: @q, category_id: @category_id, per: per_page, show_deleted: (show_deleted? ? 1 : 0), tab: 'terms', page: page) %>">
+      Terms
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link <%= @active_tab == 'commands' ? 'active' : '' %>"
+       href="/search?<%= URI.encode_www_form(q: @q, category_id: @category_id, per: per_page, show_deleted: (show_deleted? ? 1 : 0), tab: 'commands', page: page) %>">
+      Commands
+    </a>
+  </li>
+</ul>
+
+<% if @active_tab == 'terms' %>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle">
+      <thead>
+      <tr>
+        <th style="width: 18%">Category</th>
+        <th style="width: 22%">EN</th>
+        <th style="width: 22%">RU</th>
+        <th>Descr (EN)</th>
+        <th style="width: 12%"></th>
+      </tr>
+      </thead>
+      <tbody>
+      <% if @term_rows.empty? %>
+        <tr><td colspan="5" class="text-muted">No term results.</td></tr>
+      <% else %>
+        <% @term_rows.each do |r| %>
+          <tr class="<%= r["deleted_on"] ? "table-warning" : "" %>">
+            <td><%= h(r["category_name"]) %></td>
+            <td><%= (r["en_hl"] && !r["en_hl"].empty?) ? r["en_hl"] : h(r["en"]) %></td>
+            <td><%= (r["ru_hl"] && !r["ru_hl"].empty?) ? r["ru_hl"] : h(r["ru"]) %></td>
+            <td><%= h(r["descr_en"].to_s[0,160]) %></td>
+            <td class="text-end">
+              <a class="btn btn-sm btn-outline-secondary" href="/terms/<%= r["id"] %>/edit">Edit</a>
+            </td>
+          </tr>
+        <% end %>
+      <% end %>
+      </tbody>
+    </table>
+  </div>
+<% else %>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle">
+      <thead>
+      <tr>
+        <th style="width: 20%">Category</th>
+        <th style="width: 25%">Title</th>
+        <th>Descr (EN)</th>
+        <th style="width: 12%"></th>
+      </tr>
+      </thead>
+      <tbody>
+      <% if @command_rows.empty? %>
+        <tr><td colspan="4" class="text-muted">No command results.</td></tr>
+      <% else %>
+        <% @command_rows.each do |r| %>
+          <tr class="<%= r["deleted_on"] ? "table-warning" : "" %>">
+            <td><%= h(r["category_name"]) %></td>
+            <td><%= simple_highlight(r["title"], @q) %></td>
+            <td><%= simple_highlight(r["descr_en"].to_s[0,160], @q) %></td>
+            <td class="text-end">
+              <a class="btn btn-sm btn-outline-secondary" href="/commands/<%= r["id"] %>/edit">Edit</a>
+            </td>
+          </tr>
+        <% end %>
+      <% end %>
+      </tbody>
+    </table>
+  </div>
+<% end %>
+
+<nav>
+  <ul class="pagination">
+    <li class="page-item <%= 'disabled' if page<=1 %>">
+      <a class="page-link"
+         href="/search?<%= URI.encode_www_form(q: @q, category_id: @category_id, per: per_page, show_deleted: (show_deleted? ? 1 : 0), tab: @active_tab, page: [page-1,1].max) %>">
+        Prev
+      </a>
+    </li>
+    <li class="page-item active"><span class="page-link"><%= page %></span></li>
+    <li class="page-item">
+      <a class="page-link"
+         href="/search?<%= URI.encode_www_form(q: @q, category_id: @category_id, per: per_page, show_deleted: (show_deleted? ? 1 : 0), tab: @active_tab, page: page+1) %>">
+        Next
+      </a>
+    </li>
+  </ul>
+</nav>

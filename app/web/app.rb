@@ -100,7 +100,7 @@ class GlossaryApp < Sinatra::Base
           LIMIT #{limit} OFFSET #{offset}
         SQL
         conn.exec_query(sql).to_a
-      end
+      end      
     end
 
     # Commands listing query
@@ -132,6 +132,55 @@ class GlossaryApp < Sinatra::Base
         FROM examples e
         WHERE #{where.join(" AND ")}
         ORDER BY e.title COLLATE NOCASE
+        LIMIT #{limit} OFFSET #{offset}
+      SQL
+      conn.exec_query(sql).to_a
+    end
+
+    # Basic highlight for Commands (case-insensitive, HTML-safe).
+    def simple_highlight(text, query)
+      return h(text) if query.to_s.strip.empty? || text.to_s.empty?
+      escaped = h(text.to_s)
+      pattern = Regexp.new(Regexp.escape(query.to_s), Regexp::IGNORECASE)
+      escaped.gsub(pattern) { |m| "<mark>#{m}</mark>" }
+    end
+
+    # Commands search (LIKE-based; matches title/descr_en/descr_ru)
+    def commands_search(q, category_id: nil, limit: 20, offset: 0)
+      conn = ActiveRecord::Base.connection
+      query = q.to_s.strip
+      where = []
+      where << "cmd.deleted_on IS NULL" unless show_deleted?
+      where << "cmd.category_id = #{category_id.to_i}" if category_id && !category_id.empty?
+
+      if query.empty?
+        # Browse mode (no query) — just list
+        sql = <<~SQL
+          SELECT cmd.*, c.name_en AS category_name
+          FROM commands cmd
+          JOIN categories c ON c.id = cmd.category_id
+          #{where.empty? ? "" : "WHERE #{where.join(' AND ')}"}
+          ORDER BY c.name_en COLLATE NOCASE, cmd.title COLLATE NOCASE
+          LIMIT #{limit} OFFSET #{offset}
+        SQL
+        return conn.exec_query(sql).to_a
+      end
+
+      pat = conn.quote("%#{query}%")
+      where << "(LOWER(cmd.title) LIKE LOWER(#{pat}) OR LOWER(IFNULL(cmd.descr_en,'')) LIKE LOWER(#{pat}) OR LOWER(IFNULL(cmd.descr_ru,'')) LIKE LOWER(#{pat}))"
+
+      # naive relevance: title match counts more
+      sql = <<~SQL
+        SELECT
+          cmd.*,
+          c.name_en AS category_name,
+          (CASE WHEN LOWER(cmd.title) LIKE LOWER(#{pat}) THEN 2 ELSE 0 END
+           + CASE WHEN LOWER(IFNULL(cmd.descr_en,'')) LIKE LOWER(#{pat}) THEN 1 ELSE 0 END
+           + CASE WHEN LOWER(IFNULL(cmd.descr_ru,'')) LIKE LOWER(#{pat}) THEN 1 ELSE 0 END) AS score
+        FROM commands cmd
+        JOIN categories c ON c.id = cmd.category_id
+        WHERE #{where.join(" AND ")}
+        ORDER BY score DESC, cmd.title COLLATE NOCASE
         LIMIT #{limit} OFFSET #{offset}
       SQL
       conn.exec_query(sql).to_a
@@ -352,5 +401,27 @@ class GlossaryApp < Sinatra::Base
     ex = Example.find(params[:id])
     ex.update!(deleted_on: nil)
     redirect "/commands/#{ex.command_id}?#{request.query_string}"
+  end
+
+  # =========================
+  # Combined Search (Terms + Commands)
+  # =========================
+  get "/search" do
+    @q = params[:q].to_s
+    @category_id = params[:category_id].to_s
+    @categories = categories_for_select
+    @active_tab = params[:tab].to_s
+    @active_tab = "terms" unless %w[terms commands].include?(@active_tab)
+
+    # shared pagination (kept simple)
+    limit  = per_page
+    off    = offset
+
+    # Terms via FTS (with highlight/bm25)
+    @term_rows = @q.strip.empty? ? [] : fts_query(@q, category_id: @category_id, limit: limit, offset: off)
+    # Commands via LIKE (title/descr_*)
+    @command_rows = @q.strip.empty? ? [] : commands_search(@q, category_id: @category_id, limit: limit, offset: off)
+
+    erb :"search/index"
   end
 end
