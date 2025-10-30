@@ -185,6 +185,22 @@ class GlossaryApp < Sinatra::Base
       SQL
       conn.exec_query(sql).to_a
     end
+
+    # Categories listing (with Show deleted + pagination)
+    def categories_query(limit: 20, offset: 0)
+      conn = ActiveRecord::Base.connection
+      where = []
+      where << (show_deleted? ? "1=1" : "deleted_on IS NULL")
+
+      sql = <<~SQL
+        SELECT *
+        FROM categories
+        WHERE #{where.join(" AND ")}
+        ORDER BY name_en COLLATE NOCASE
+        LIMIT #{limit} OFFSET #{offset}
+      SQL
+      conn.exec_query(sql).to_a
+    end
   end
 
   # Root → Terms
@@ -269,6 +285,65 @@ class GlossaryApp < Sinatra::Base
   get "/terms/:id" do
     @term = Term.find(params[:id])
     erb :"terms/show"
+  end
+
+  # =========================
+  # Categories (Show deleted + CRUD)
+  # =========================
+
+  get "/categories" do
+    @rows = categories_query(limit: per_page, offset: offset)
+    erb :"categories/index"
+  end
+
+  get "/categories/new" do
+    @category = Category.new
+    erb :"categories/new"
+  end
+
+  post "/categories" do
+    @category = Category.new(
+      name_en: params.dig("category", "name_en"),
+      name_ru: params.dig("category", "name_ru")
+    )
+    if @category.save
+      redirect "/categories"
+    else
+      @error = @category.errors.full_messages.join(", ")
+      erb :"categories/new"
+    end
+  end
+
+  get "/categories/:id/edit" do
+    @category = Category.find(params[:id])
+    erb :"categories/edit"
+  end
+
+  put "/categories/:id" do
+    @category = Category.find(params[:id])
+    if @category.update(
+      name_en: params.dig("category", "name_en"),
+      name_ru: params.dig("category", "name_ru")
+    )
+      redirect "/categories"
+    else
+      @error = @category.errors.full_messages.join(", ")
+      erb :"categories/edit"
+    end
+  end
+
+  # Soft delete (mark as deleted_on)
+  post "/categories/:id/delete" do
+    cat = Category.find(params[:id])
+    cat.update!(deleted_on: Time.now)
+    redirect "/categories?#{request.query_string}"
+  end
+
+  # Restore (clear deleted_on)
+  post "/categories/:id/restore" do
+    cat = Category.find(params[:id])
+    cat.update!(deleted_on: nil)
+    redirect "/categories?#{request.query_string}"
   end
 
   # =========================

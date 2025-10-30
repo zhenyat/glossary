@@ -1,0 +1,90 @@
+<%#
+################################################################################
+#   File:     app/web/views/categories/index.erb
+#   Purpose:  Categories list + "Show deleted" toggle + pagination + CRUD actions
+#   Author:   ChatGPT (GPT-4.1)
+#   Date:     2025-10-30
+################################################################################
+%>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <form class="row g-2" method="get" action="/categories">
+      <div class="col-md-3">
+        <select class="form-select" name="per">
+          <% [10,20,50,100].each do |n| %>
+            <option value="<%= n %>" <%= "selected" if per_page==n %>><%= n %>/page</option>
+          <% end %>
+        </select>
+      </div>
+      <div class="col-md-3 d-flex align-items-center">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="show_deleted" name="show_deleted" value="1" <%= "checked" if show_deleted? %>>
+          <label class="form-check-label" for="show_deleted">Show deleted</label>
+        </div>
+      </div>
+      <div class="col-md-2 d-grid">
+        <button class="btn btn-primary">Apply</button>
+      </div>
+      <div class="col-md-4 text-end">
+        <a class="btn btn-success" href="/categories/new">New category</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<table class="table table-sm table-hover align-middle">
+  <thead>
+    <tr>
+      <th style="width: 28%">name_en</th>
+      <th style="width: 28%">name_ru</th>
+      <th style="width: 28%">Timestamps</th>
+      <th style="width: 16%"></th>
+    </tr>
+  </thead>
+  <tbody>
+    <% if @rows.empty? %>
+      <tr><td colspan="4" class="text-muted">No categories.</td></tr>
+    <% else %>
+      <% @rows.each do |r| %>
+        <tr class="<%= r["deleted_on"] ? "table-warning" : "" %>">
+          <td><%= h(r["name_en"]) %></td>
+          <td><%= h(r["name_ru"]) %></td>
+          <td class="small text-muted">
+            <div><strong>created:</strong> <%= h(r["created_at"]) %></div>
+            <div><strong>updated:</strong> <%= h(r["updated_at"]) %></div>
+            <% if r["deleted_on"] %>
+              <div><strong>deleted:</strong> <%= h(r["deleted_on"]) %></div>
+            <% end %>
+          </td>
+          <td class="text-end">
+            <a class="btn btn-sm btn-outline-secondary" href="/categories/<%= r["id"] %>/edit?<%= request.query_string %>">Edit</a>
+            <% if r["deleted_on"].nil? %>
+              <form class="d-inline" method="post" action="/categories/<%= r["id"] %>/delete?<%= request.query_string %>">
+                <button class="btn btn-sm btn-outline-danger" onclick="return confirm('Soft-delete this category?')">Delete</button>
+              </form>
+            <% else %>
+              <form class="d-inline" method="post" action="/categories/<%= r["id"] %>/restore?<%= request.query_string %>">
+                <button class="btn btn-sm btn-outline-success">Restore</button>
+              </form>
+            <% end %>
+          </td>
+        </tr>
+      <% end %>
+    <% end %>
+  </tbody>
+</table>
+
+<nav>
+  <ul class="pagination">
+    <li class="page-item <%= 'disabled' if page<=1 %>">
+      <a class="page-link"
+         href="?per=<%= per_page %>&show_deleted=<%= show_deleted? ? 1 : 0 %>&page=<%= [page-1,1].max %>">Prev</a>
+    </li>
+    <li class="page-item active"><span class="page-link"><%= page %></span></li>
+    <li class="page-item">
+      <a class="page-link"
+         href="?per=<%= per_page %>&show_deleted=<%= show_deleted? ? 1 : 0 %>&page=<%= page+1 %>">Next</a>
+    </li>
+  </ul>
+</nav>

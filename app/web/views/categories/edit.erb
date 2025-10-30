@@ -1,0 +1,14 @@
+<%#
+################################################################################
+#   File:     app/web/views/categories/edit.erb
+#   Purpose:  Edit category page
+#   Author:   ChatGPT (GPT-4.1)
+#   Date:     2025-10-30
+
+################################################################################
+%>
+<h3>Edit category</h3>
+<form method="post" action="/categories/<%= @category.id %>">
+  <input type="hidden" name="_method" value="put">
+  <%= erb :"categories/_form" %>
+</form>

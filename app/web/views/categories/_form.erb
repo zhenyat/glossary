@@ -1,0 +1,30 @@
+<%#
+################################################################################
+#   File:     app/web/views/categories/_form.erb
+#   Purpose:  Shared form for new/edit Category
+#   Author:   ChatGPT (GPT-4.1)
+#   Date:     2025-10-30
+################################################################################
+%>
+<div class="row g-3">
+  <div class="col-md-6">
+    <label class="form-label">name_en</label>
+    <input class="form-control" type="text" name="category[name_en]" value="<%= h(@category.name_en) %>" required>
+    <div class="form-text">English key, case-insensitive unique among active rows.</div>
+  </div>
+  <div class="col-md-6">
+    <label class="form-label">name_ru</label>
+    <input class="form-control" type="text" name="category[name_ru]" value="<%= h(@category.name_ru) %>">
+  </div>
+
+  <% if @error %>
+    <div class="col-12">
+      <div class="alert alert-danger"><%= h(@error) %></div>
+    </div>
+  <% end %>
+
+  <div class="col-12 d-flex gap-2">
+    <button class="btn btn-primary">Save</button>
+    <a class="btn btn-outline-secondary" href="/categories">Cancel</a>
+  </div>
+</div>
