@@ -1,0 +1,12 @@
+<%#
+################################################################################
+#   File:     app/web/views/examples/new.erb
+#   Purpose:  Create example (nested under command)
+#   Author:   ChatGPT (GPT-4.1)
+#   Date:     2025-10-28
+################################################################################
+%>
+<h3>New example for <code><%= h(@command.title) %></code></h3>
+<form method="post" action="/commands/<%= @command.id %>/examples?<%= request.query_string %>">
+  <%= erb :"examples/_form" %>
+</form>

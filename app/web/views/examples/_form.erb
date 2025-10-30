@@ -1,0 +1,36 @@
+<%#
+################################################################################
+#   File:     app/web/views/examples/_form.erb
+#   Purpose:  Shared form for new/edit Example
+#   Author:   ChatGPT (GPT-4.1)
+#   Date:     2025-10-28
+################################################################################
+%>
+<div class="row g-3">
+  <div class="col-12">
+    <label class="form-label">Snippet (title)</label>
+    <input class="form-control" type="text" name="example[title]" value="<%= h(@example.title) %>" required>
+    <div class="form-text">Use the command snippet, e.g., ls -la</div>
+  </div>
+
+  <div class="col-12">
+    <label class="form-label">Phrase (EN)</label>
+    <textarea class="form-control" name="example[descr_en]" rows="2"><%= h(@example.descr_en) %></textarea>
+  </div>
+
+  <div class="col-12">
+    <label class="form-label">Phrase (RU)</label>
+    <textarea class="form-control" name="example[descr_ru]" rows="2"><%= h(@example.descr_ru) %></textarea>
+  </div>
+
+  <% if @error %>
+    <div class="col-12">
+      <div class="alert alert-danger"><%= h(@error) %></div>
+    </div>
+  <% end %>
+
+  <div class="col-12 d-flex gap-2">
+    <button class="btn btn-primary">Save</button>
+    <a class="btn btn-outline-secondary" href="/commands/<%= @command.id %>?<%= request.query_string %>">Cancel</a>
+  </div>
+</div>

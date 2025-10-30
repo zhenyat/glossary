@@ -1,0 +1,41 @@
+<%#
+################################################################################
+#   File:     app/web/views/commands/_form.erb
+#   Purpose:  Shared form for new/edit Command
+#   Author:   ChatGPT (GPT-4.1)
+#   Date:     2025-10-28
+################################################################################
+%>
+<div class="row g-3">
+  <div class="col-md-4">
+    <label class="form-label">Category</label>
+    <select class="form-select" name="command[category_id]" required>
+      <% @categories.each do |c| %>
+        <option value="<%= c.id %>" <%= "selected" if @command.category_id.to_s == c.id.to_s %>><%= h(c.name_en) %></option>
+      <% end %>
+    </select>
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Title</label>
+    <input class="form-control" type="text" name="command[title]" value="<%= h(@command.title) %>" required>
+  </div>
+  <div class="col-md-12">
+    <label class="form-label">descr_en</label>
+    <textarea class="form-control" name="command[descr_en]" rows="3"><%= h(@command.descr_en) %></textarea>
+  </div>
+  <div class="col-md-12">
+    <label class="form-label">descr_ru</label>
+    <textarea class="form-control" name="command[descr_ru]" rows="3"><%= h(@command.descr_ru) %></textarea>
+  </div>
+
+  <% if @error %>
+    <div class="col-12">
+      <div class="alert alert-danger"><%= h(@error) %></div>
+    </div>
+  <% end %>
+
+  <div class="col-12 d-flex gap-2">
+    <button class="btn btn-primary">Save</button>
+    <a class="btn btn-outline-secondary" href="/commands">Cancel</a>
+  </div>
+</div>

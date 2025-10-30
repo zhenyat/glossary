@@ -1,6 +1,7 @@
 ################################################################################
 #   File:     app/web/app.rb
-#   Purpose:  Sinatra app (CRUD + FTS search for Terms)
+#   Purpose:  Sinatra app (CRUD + FTS search for Terms; CRUD for Commands/Examples)
+#             Includes "Show deleted" toggle for Terms/Commands/Examples
 #   Author:   ChatGPT (GPT-4.1)
 #   Date:     2025-10-28
 ################################################################################
@@ -24,14 +25,14 @@ class GlossaryApp < Sinatra::Base
     register Sinatra::Reloader
   end
 
-  # DB connection (reuse your ENV DB_PATH)
+  # DB connection
   configure do
     db_path = ENV.fetch("DB_PATH", File.join(settings.root, "glossary.sqlite3"))
     ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: db_path, timeout: 5000)
     ActiveRecord::Base.connection.execute("PRAGMA foreign_keys = ON;")
   end
 
-  # Load models
+  # Load models lazily
   before do
     require_relative "../models/concerns/soft_deletable" unless defined?(SoftDeletable)
     require_relative "../models/application_record"       unless defined?(ApplicationRecord)
@@ -45,29 +46,34 @@ class GlossaryApp < Sinatra::Base
     def h(s) = Rack::Utils.escape_html(s.to_s)
 
     def categories_for_select
-      Category.where(deleted_on: nil).order(Arel.sql("name_en COLLATE NOCASE"))
+      scope = Category.order(Arel.sql("name_en COLLATE NOCASE"))
+      show_deleted? ? scope : scope.where(deleted_on: nil)
+    end
+
+    def show_deleted?
+      params["show_deleted"] == "1"
     end
 
     def per_page
-      n = (params[:per] || "").to_i   # nil-safe
-      (1..200).cover?(n) ? n : 20     # clamp to sane bounds; default 20
+      n = (params[:per] || "").to_i
+      (1..200).cover?(n) ? n : 20
     end
 
     def page
-      n = (params[:page] || "").to_i  # nil-safe
-      n < 1 ? 1 : n                    # minimum 1
+      n = (params[:page] || "").to_i
+      n < 1 ? 1 : n
     end
 
     def offset
       (page - 1) * per_page
     end
 
-
-    # FTS search using terms_fts (do not alias left of MATCH)
+    # FTS search for terms (do not alias left of MATCH)
     def fts_query(q, category_id: nil, limit: 20, offset: 0)
       conn = ActiveRecord::Base.connection
-      where = ["t.deleted_on IS NULL"]
+      where = []
       where << "t.category_id = #{category_id.to_i}" if category_id && !category_id.empty?
+      where << (show_deleted? ? "1=1" : "t.deleted_on IS NULL")
 
       if q && !q.strip.empty?
         sql = <<~SQL
@@ -85,7 +91,6 @@ class GlossaryApp < Sinatra::Base
         SQL
         conn.exec_query(sql).to_a
       else
-        # Browse mode (no FTS), order by English term
         sql = <<~SQL
           SELECT t.*, c.name_en AS category_name
           FROM terms t
@@ -97,13 +102,51 @@ class GlossaryApp < Sinatra::Base
         conn.exec_query(sql).to_a
       end
     end
+
+    # Commands listing query
+    def commands_query(category_id: nil, limit: 20, offset: 0)
+      conn = ActiveRecord::Base.connection
+      where = []
+      where << "cmd.category_id = #{category_id.to_i}" if category_id && !category_id.empty?
+      where << (show_deleted? ? "1=1" : "cmd.deleted_on IS NULL")
+
+      sql = <<~SQL
+        SELECT cmd.*, c.name_en AS category_name
+        FROM commands cmd
+        JOIN categories c ON c.id = cmd.category_id
+        WHERE #{where.join(" AND ")}
+        ORDER BY c.name_en COLLATE NOCASE, cmd.title COLLATE NOCASE
+        LIMIT #{limit} OFFSET #{offset}
+      SQL
+      conn.exec_query(sql).to_a
+    end
+
+    # Examples for a specific command
+    def examples_query(command_id:, limit: 50, offset: 0)
+      conn = ActiveRecord::Base.connection
+      where = ["e.command_id = #{command_id.to_i}"]
+      where << (show_deleted? ? "1=1" : "e.deleted_on IS NULL")
+
+      sql = <<~SQL
+        SELECT e.*
+        FROM examples e
+        WHERE #{where.join(" AND ")}
+        ORDER BY e.title COLLATE NOCASE
+        LIMIT #{limit} OFFSET #{offset}
+      SQL
+      conn.exec_query(sql).to_a
+    end
   end
 
+  # Root → Terms
   get "/" do
     redirect "/terms"
   end
 
-  # Terms index + search
+  # =========================
+  # Terms
+  # =========================
+
   get "/terms" do
     @q = params[:q].to_s
     @category_id = params[:category_id].to_s
@@ -112,14 +155,12 @@ class GlossaryApp < Sinatra::Base
     erb :"terms/index"
   end
 
-  # New
   get "/terms/new" do
     @categories = categories_for_select
     @term = Term.new
     erb :"terms/new"
   end
 
-  # Create
   post "/terms" do
     @term = Term.new(
       category_id: params.dig("term", "category_id"),
@@ -139,14 +180,12 @@ class GlossaryApp < Sinatra::Base
     end
   end
 
-  # Edit
   get "/terms/:id/edit" do
     @term = Term.find(params[:id])
     @categories = categories_for_select
     erb :"terms/edit"
   end
 
-  # Update
   put "/terms/:id" do
     @term = Term.find(params[:id])
     if @term.update(
@@ -166,23 +205,152 @@ class GlossaryApp < Sinatra::Base
     end
   end
 
-  # Soft-delete
   post "/terms/:id/delete" do
     term = Term.find(params[:id])
     term.update!(deleted_on: Time.now)
-    redirect "/terms"
+    redirect "/terms?#{request.query_string}"
   end
 
-  # Restore
   post "/terms/:id/restore" do
     term = Term.find(params[:id])
     term.update!(deleted_on: nil)
-    redirect "/terms"
+    redirect "/terms?#{request.query_string}"
   end
 
-  # Show (optional)
   get "/terms/:id" do
     @term = Term.find(params[:id])
     erb :"terms/show"
+  end
+
+  # =========================
+  # Commands
+  # =========================
+
+  get "/commands" do
+    @category_id = params[:category_id].to_s
+    @categories = categories_for_select
+    @rows = commands_query(category_id: @category_id, limit: per_page, offset: offset)
+    erb :"commands/index"
+  end
+
+  get "/commands/new" do
+    @categories = categories_for_select
+    @command = Command.new
+    erb :"commands/new"
+  end
+
+  post "/commands" do
+    @command = Command.new(
+      category_id: params.dig("command", "category_id"),
+      title:       params.dig("command", "title"),
+      descr_en:    params.dig("command", "descr_en"),
+      descr_ru:    params.dig("command", "descr_ru")
+    )
+    if @command.save
+      redirect "/commands"
+    else
+      @categories = categories_for_select
+      @error = @command.errors.full_messages.join(", ")
+      erb :"commands/new"
+    end
+  end
+
+  get "/commands/:id/edit" do
+    @command = Command.find(params[:id])
+    @categories = categories_for_select
+    erb :"commands/edit"
+  end
+
+  put "/commands/:id" do
+    @command = Command.find(params[:id])
+    if @command.update(
+      category_id: params.dig("command", "category_id"),
+      title:       params.dig("command", "title"),
+      descr_en:    params.dig("command", "descr_en"),
+      descr_ru:    params.dig("command", "descr_ru")
+    )
+      redirect "/commands"
+    else
+      @categories = categories_for_select
+      @error = @command.errors.full_messages.join(", ")
+      erb :"commands/edit"
+    end
+  end
+
+  post "/commands/:id/delete" do
+    cmd = Command.find(params[:id])
+    cmd.update!(deleted_on: Time.now)
+    redirect "/commands?#{request.query_string}"
+  end
+
+  post "/commands/:id/restore" do
+    cmd = Command.find(params[:id])
+    cmd.update!(deleted_on: nil)
+    redirect "/commands?#{request.query_string}"
+  end
+
+  get "/commands/:id" do
+    @command = Command.find(params[:id])
+    @examples = examples_query(command_id: @command.id, limit: 200, offset: 0)
+    erb :"commands/show"
+  end
+
+  # =========================
+  # Examples (nested under Command)
+  # =========================
+
+  get "/commands/:command_id/examples/new" do
+    @command = Command.find(params[:command_id])
+    @example = Example.new(command_id: @command.id)
+    erb :"examples/new"
+  end
+
+  post "/commands/:command_id/examples" do
+    @command = Command.find(params[:command_id])
+    @example = Example.new(
+      command_id: @command.id,
+      title:      params.dig("example", "title"),
+      descr_en:   params.dig("example", "descr_en"),
+      descr_ru:   params.dig("example", "descr_ru")
+    )
+    if @example.save
+      redirect "/commands/#{@command.id}"
+    else
+      @error = @example.errors.full_messages.join(", ")
+      erb :"examples/new"
+    end
+  end
+
+  get "/examples/:id/edit" do
+    @example = Example.find(params[:id])
+    @command = @example.command
+    erb :"examples/edit"
+  end
+
+  put "/examples/:id" do
+    @example = Example.find(params[:id])
+    if @example.update(
+      title:    params.dig("example", "title"),
+      descr_en: params.dig("example", "descr_en"),
+      descr_ru: params.dig("example", "descr_ru")
+    )
+      redirect "/commands/#{@example.command_id}"
+    else
+      @command = @example.command
+      @error = @example.errors.full_messages.join(", ")
+      erb :"examples/edit"
+    end
+  end
+
+  post "/examples/:id/delete" do
+    ex = Example.find(params[:id])
+    ex.update!(deleted_on: Time.now)
+    redirect "/commands/#{ex.command_id}?#{request.query_string}"
+  end
+
+  post "/examples/:id/restore" do
+    ex = Example.find(params[:id])
+    ex.update!(deleted_on: nil)
+    redirect "/commands/#{ex.command_id}?#{request.query_string}"
   end
 end

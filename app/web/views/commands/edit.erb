@@ -1,0 +1,13 @@
+<%#
+################################################################################
+#   File:     app/web/views/commands/edit.erb
+#   Purpose:  Edit command page
+#   Author:   ChatGPT (GPT-4.1)
+#   Date:     2025-10-28
+################################################################################
+%>
+<h3>Edit command</h3>
+<form method="post" action="/commands/<%= @command.id %>">
+  <input type="hidden" name="_method" value="put">
+  <%= erb :"commands/_form" %>
+</form>

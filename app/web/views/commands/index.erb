@@ -1,18 +1,15 @@
 <%#
 ################################################################################
-#   File:     app/web/views/terms/index.erb
-#   Purpose:  Terms list + search + filter + pagination + Show deleted toggle
+#   File:     app/web/views/commands/index.erb
+#   Purpose:  Commands list + category filter + pagination + Show deleted toggle
 #   Author:   ChatGPT (GPT-4.1)
 #   Date:     2025-10-28
 ################################################################################
 %>
 <div class="card mb-3">
   <div class="card-body">
-    <form class="row g-2" method="get" action="/terms">
-      <div class="col-md-5">
-        <input class="form-control" type="text" name="q" value="<%= h(@q) %>" placeholder="Search (FTS: json OR yaml, en:json, ru:...)">
-      </div>
-      <div class="col-md-3">
+    <form class="row g-2" method="get" action="/commands">
+      <div class="col-md-4">
         <select class="form-select" name="category_id">
           <option value="">All categories</option>
           <% @categories.each do |c| %>
@@ -20,20 +17,20 @@
           <% end %>
         </select>
       </div>
-      <div class="col-md-2">
+      <div class="col-md-3">
         <select class="form-select" name="per">
           <% [10,20,50,100].each do |n| %>
             <option value="<%= n %>" <%= "selected" if per_page==n %>><%= n %>/page</option>
           <% end %>
         </select>
       </div>
-      <div class="col-md-2 d-flex align-items-center">
+      <div class="col-md-3 d-flex align-items-center">
         <div class="form-check">
           <input class="form-check-input" type="checkbox" id="show_deleted" name="show_deleted" value="1" <%= "checked" if show_deleted? %>>
           <label class="form-check-label" for="show_deleted">Show deleted</label>
         </div>
       </div>
-      <div class="col-12 d-grid">
+      <div class="col-md-2 d-grid">
         <button class="btn btn-primary">Apply</button>
       </div>
     </form>
@@ -43,28 +40,26 @@
 <table class="table table-sm table-hover align-middle">
   <thead>
     <tr>
-      <th style="width: 18%">Category</th>
-      <th style="width: 22%">EN</th>
-      <th style="width: 22%">RU</th>
+      <th style="width: 20%">Category</th>
+      <th style="width: 25%">Title</th>
       <th>Descr (EN)</th>
-      <th style="width: 14%"></th>
+      <th style="width: 20%"></th>
     </tr>
   </thead>
   <tbody>
     <% @rows.each do |r| %>
       <tr class="<%= r["deleted_on"] ? "table-warning" : "" %>">
         <td><%= h(r["category_name"]) %></td>
-        <td><%= (r["en_hl"] && !r["en_hl"].empty?) ? r["en_hl"] : h(r["en"]) %></td>
-        <td><%= (r["ru_hl"] && !r["ru_hl"].empty?) ? r["ru_hl"] : h(r["ru"]) %></td>
+        <td><a href="/commands/<%= r["id"] %>?<%= request.query_string %>"><%= h(r["title"]) %></a></td>
         <td><%= h(r["descr_en"].to_s[0,160]) %></td>
         <td class="text-end">
-          <a class="btn btn-sm btn-outline-secondary" href="/terms/<%= r["id"] %>/edit?<%= request.query_string %>">Edit</a>
+          <a class="btn btn-sm btn-outline-secondary" href="/commands/<%= r["id"] %>/edit?<%= request.query_string %>">Edit</a>
           <% if r["deleted_on"].nil? %>
-            <form class="d-inline" method="post" action="/terms/<%= r["id"] %>/delete?<%= request.query_string %>">
-              <button class="btn btn-sm btn-outline-danger" onclick="return confirm('Soft-delete this term?')">Delete</button>
+            <form class="d-inline" method="post" action="/commands/<%= r["id"] %>/delete?<%= request.query_string %>">
+              <button class="btn btn-sm btn-outline-danger" onclick="return confirm('Soft-delete this command?')">Delete</button>
             </form>
           <% else %>
-            <form class="d-inline" method="post" action="/terms/<%= r["id"] %>/restore?<%= request.query_string %>">
+            <form class="d-inline" method="post" action="/commands/<%= r["id"] %>/restore?<%= request.query_string %>">
               <button class="btn btn-sm btn-outline-success">Restore</button>
             </form>
           <% end %>
@@ -77,11 +72,11 @@
 <nav>
   <ul class="pagination">
     <li class="page-item <%= 'disabled' if page<=1 %>">
-      <a class="page-link" href="?q=<%= h(@q) %>&category_id=<%= h(@category_id) %>&per=<%= per_page %>&show_deleted=<%= show_deleted? ? 1 : 0 %>&page=<%= [page-1,1].max %>">Prev</a>
+      <a class="page-link" href="?category_id=<%= h(@category_id) %>&per=<%= per_page %>&show_deleted=<%= show_deleted? ? 1 : 0 %>&page=<%= [page-1,1].max %>">Prev</a>
     </li>
     <li class="page-item active"><span class="page-link"><%= page %></span></li>
     <li class="page-item">
-      <a class="page-link" href="?q=<%= h(@q) %>&category_id=<%= h(@category_id) %>&per=<%= per_page %>&show_deleted=<%= show_deleted? ? 1 : 0 %>&page=<%= page+1 %>">Next</a>
+      <a class="page-link" href="?category_id=<%= h(@category_id) %>&per=<%= per_page %>&show_deleted=<%= show_deleted? ? 1 : 0 %>&page=<%= page+1 %>">Next</a>
     </li>
   </ul>
 </nav>

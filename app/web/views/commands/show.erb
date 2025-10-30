@@ -1,0 +1,88 @@
+<%#
+################################################################################
+#   File:     app/web/views/commands/show.erb
+#   Purpose:  Command details + Examples list (+ Show deleted toggle)
+#   Author:   ChatGPT (GPT-4.1)
+#   Date:     2025-10-28
+################################################################################
+%>
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h3><%= h(@command.title) %></h3>
+  <div>
+    <% if @command.deleted_on.nil? %>
+      <form class="d-inline" method="post" action="/commands/<%= @command.id %>/delete?<%= request.query_string %>">
+        <button class="btn btn-sm btn-outline-danger" onclick="return confirm('Soft-delete this command?')">Delete</button>
+      </form>
+    <% else %>
+      <form class="d-inline" method="post" action="/commands/<%= @command.id %>/restore?<%= request.query_string %>">
+        <button class="btn btn-sm btn-outline-success">Restore</button>
+      </form>
+    <% end %>
+    <a class="btn btn-sm btn-outline-secondary" href="/commands/<%= @command.id %>/edit?<%= request.query_string %>">Edit</a>
+    <a class="btn btn-sm btn-outline-primary" href="/commands">Back</a>
+  </div>
+</div>
+
+<p class="text-muted mb-3">
+  <strong>Category:</strong> <%= h(@command.category&.name_en) %>
+</p>
+<div class="row mb-4">
+  <div class="col-md-6">
+    <h6>descr_en</h6>
+    <pre><%= h(@command.descr_en) %></pre>
+  </div>
+  <div class="col-md-6">
+    <h6>descr_ru</h6>
+    <pre><%= h(@command.descr_ru) %></pre>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <form class="row g-2" method="get" action="/commands/<%= @command.id %>">
+      <input type="hidden" name="per" value="<%= per_page %>">
+      <div class="col-md-3 d-flex align-items-center">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="show_deleted" name="show_deleted" value="1" <%= "checked" if show_deleted? %>>
+          <label class="form-check-label" for="show_deleted">Show deleted</label>
+        </div>
+      </div>
+      <div class="col-md-2 d-grid">
+        <button class="btn btn-primary">Apply</button>
+      </div>
+      <div class="col-md-7 text-end">
+        <a class="btn btn-success" href="/commands/<%= @command.id %>/examples/new?<%= request.query_string %>">Add example</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<table class="table table-sm table-hover align-middle">
+  <thead>
+    <tr>
+      <th style="width: 36%">Snippet (title)</th>
+      <th>Phrase (EN)</th>
+      <th style="width: 22%">Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    <% @examples.each do |e| %>
+      <tr class="<%= e["deleted_on"] ? "table-warning" : "" %>">
+        <td><code><%= h(e["title"]) %></code></td>
+        <td><%= h(e["descr_en"]) %></td>
+        <td class="text-end">
+          <a class="btn btn-sm btn-outline-secondary" href="/examples/<%= e["id"] %>/edit?<%= request.query_string %>">Edit</a>
+          <% if e["deleted_on"].nil? %>
+            <form class="d-inline" method="post" action="/examples/<%= e["id"] %>/delete?<%= request.query_string %>">
+              <button class="btn btn-sm btn-outline-danger" onclick="return confirm('Soft-delete this example?')">Delete</button>
+            </form>
+          <% else %>
+            <form class="d-inline" method="post" action="/examples/<%= e["id"] %>/restore?<%= request.query_string %>">
+              <button class="btn btn-sm btn-outline-success">Restore</button>
+            </form>
+          <% end %>
+        </td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>

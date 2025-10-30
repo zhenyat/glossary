@@ -1,0 +1,13 @@
+<%#
+################################################################################
+#   File:     app/web/views/examples/edit.erb
+#   Purpose:  Edit example
+#   Author:   ChatGPT (GPT-4.1)
+#   Date:     2025-10-28
+################################################################################
+%>
+<h3>Edit example for <code><%= h(@command.title) %></code></h3>
+<form method="post" action="/examples/<%= @example.id %>?<%= request.query_string %>">
+  <input type="hidden" name="_method" value="put">
+  <%= erb :"examples/_form" %>
+</form>
