@@ -201,6 +201,102 @@ class GlossaryApp < Sinatra::Base
       SQL
       conn.exec_query(sql).to_a
     end
+
+    # Counts for a category: { terms_active:, terms_total:, commands_active:, commands_total: }
+    def category_counts(category_id)
+      conn = ActiveRecord::Base.connection
+      terms = conn.exec_query(<<~SQL).first
+        SELECT
+          SUM(CASE WHEN deleted_on IS NULL THEN 1 ELSE 0 END) AS active,
+          COUNT(*) AS total
+        FROM terms
+        WHERE category_id = #{category_id.to_i}
+      SQL
+      commands = conn.exec_query(<<~SQL).first
+        SELECT
+          SUM(CASE WHEN deleted_on IS NULL THEN 1 ELSE 0 END) AS active,
+          COUNT(*) AS total
+        FROM commands
+        WHERE category_id = #{category_id.to_i}
+      SQL
+      {
+        terms_active: terms["active"].to_i,
+        terms_total: terms["total"].to_i,
+        commands_active: commands["active"].to_i,
+        commands_total: commands["total"].to_i
+      }
+    end
+
+    # Terms in a category: use FTS when q present (with highlight), otherwise simple list
+    def category_terms_query(category_id:, q:, limit: 50, offset: 0)
+      conn = ActiveRecord::Base.connection
+      query = q.to_s.strip
+      if query.empty?
+        where = ["t.category_id = #{category_id.to_i}"]
+        where << (show_deleted? ? "1=1" : "t.deleted_on IS NULL")
+        sql = <<~SQL
+          SELECT t.*, c.name_en AS category_name
+          FROM terms t
+          JOIN categories c ON c.id = t.category_id
+          WHERE #{where.join(" AND ")}
+          ORDER BY t.en COLLATE NOCASE
+          LIMIT #{limit} OFFSET #{offset}
+        SQL
+        conn.exec_query(sql).to_a
+      else
+        where = ["t.category_id = #{category_id.to_i}"]
+        where << (show_deleted? ? "1=1" : "t.deleted_on IS NULL")
+        sql = <<~SQL
+          SELECT t.*, c.name_en AS category_name,
+                 bm25(terms_fts) AS rank,
+                 highlight(terms_fts, 0, '<mark>', '</mark>') AS en_hl,
+                 highlight(terms_fts, 1, '<mark>', '</mark>') AS ru_hl
+          FROM terms_fts
+          JOIN terms t      ON terms_fts.rowid = t.id
+          JOIN categories c ON c.id = t.category_id
+          WHERE #{where.join(" AND ")}
+            AND terms_fts MATCH #{conn.quote(query)}
+          ORDER BY rank
+          LIMIT #{limit} OFFSET #{offset}
+        SQL
+        conn.exec_query(sql).to_a
+      end
+    end
+
+    # Commands in a category: LIKE search (title/descr_en/descr_ru) when q present
+    def category_commands_query(category_id:, q:, limit: 50, offset: 0)
+      conn = ActiveRecord::Base.connection
+      query = q.to_s.strip
+      where = ["cmd.category_id = #{category_id.to_i}"]
+      where << (show_deleted? ? "1=1" : "cmd.deleted_on IS NULL")
+
+      if query.empty?
+        sql = <<~SQL
+          SELECT cmd.*, c.name_en AS category_name
+          FROM commands cmd
+          JOIN categories c ON c.id = cmd.category_id
+          WHERE #{where.join(" AND ")}
+          ORDER BY cmd.title COLLATE NOCASE
+          LIMIT #{limit} OFFSET #{offset}
+        SQL
+        return conn.exec_query(sql).to_a
+      end
+
+      pat = conn.quote("%#{query}%")
+      where << "(LOWER(cmd.title) LIKE LOWER(#{pat}) OR LOWER(IFNULL(cmd.descr_en,'')) LIKE LOWER(#{pat}) OR LOWER(IFNULL(cmd.descr_ru,'')) LIKE LOWER(#{pat}))"
+      sql = <<~SQL
+        SELECT cmd.*, c.name_en AS category_name,
+               (CASE WHEN LOWER(cmd.title) LIKE LOWER(#{pat}) THEN 2 ELSE 0 END
+                + CASE WHEN LOWER(IFNULL(cmd.descr_en,'')) LIKE LOWER(#{pat}) THEN 1 ELSE 0 END
+                + CASE WHEN LOWER(IFNULL(cmd.descr_ru,'')) LIKE LOWER(#{pat}) THEN 1 ELSE 0 END) AS score
+        FROM commands cmd
+        JOIN categories c ON c.id = cmd.category_id
+        WHERE #{where.join(" AND ")}
+        ORDER BY score DESC, cmd.title COLLATE NOCASE
+        LIMIT #{limit} OFFSET #{offset}
+      SQL
+      conn.exec_query(sql).to_a
+    end
   end
 
   # Root → Terms
@@ -344,6 +440,22 @@ class GlossaryApp < Sinatra::Base
     cat = Category.find(params[:id])
     cat.update!(deleted_on: nil)
     redirect "/categories?#{request.query_string}"
+  end
+
+  # Category details: show its Terms and Commands with counts and quick filters
+  get "/categories/:id" do
+    @category = Category.find(params[:id])
+    @t_q = params[:t_q].to_s       # quick filter for terms
+    @c_q = params[:c_q].to_s       # quick filter for commands
+    @counts = category_counts(@category.id)
+
+    lim = per_page
+    off = offset
+
+    @term_rows    = category_terms_query(category_id: @category.id,   q: @t_q, limit: lim, offset: off)
+    @command_rows = category_commands_query(category_id: @category.id, q: @c_q, limit: lim, offset: off)
+
+    erb :"categories/show"
   end
 
   # =========================
