@@ -2,10 +2,13 @@
 ################################################################################
 #   File:     app/web/views/commands/index.erb
 #   Purpose:  Commands list + category filter + pagination + Show deleted toggle
+#             Adds "Add example" quick links for each command row
 #   Author:   ChatGPT (GPT-4.1)
 #   Date:     2025-10-28
+#   Updated:  2025-11-01
 ################################################################################
 %>
+
 <div class="card mb-3">
   <div class="card-body">
     <form class="row g-2" method="get" action="/commands">
@@ -43,20 +46,33 @@
       <th style="width: 20%">Category</th>
       <th style="width: 25%">Title</th>
       <th>Descr (EN)</th>
-      <th style="width: 20%"></th>
+      <th style="width: 23%"></th>
     </tr>
   </thead>
   <tbody>
     <% @rows.each do |r| %>
       <tr class="<%= r["deleted_on"] ? "table-warning" : "" %>">
         <td><%= h(r["category_name"]) %></td>
-        <td><a href="/commands/<%= r["id"] %>?<%= request.query_string %>"><%= h(r["title"]) %></a></td>
+        <td>
+          <a href="/commands/<%= r["id"] %>?<%= request.query_string %>"><%= h(r["title"]) %></a>
+        </td>
         <td><%= h(r["descr_en"].to_s[0,160]) %></td>
         <td class="text-end">
-          <a class="btn btn-sm btn-outline-secondary" href="/commands/<%= r["id"] %>/edit?<%= request.query_string %>">Edit</a>
+          <%# Quick link: Add example for this command %>
+          <a class="btn btn-sm btn-success me-1"
+             href="/commands/<%= r["id"] %>/examples/new?<%= request.query_string %>">
+            Add example
+          </a>
+
+          <a class="btn btn-sm btn-outline-secondary me-1"
+             href="/commands/<%= r["id"] %>/edit?<%= request.query_string %>">
+            Edit
+          </a>
+
           <% if r["deleted_on"].nil? %>
             <form class="d-inline" method="post" action="/commands/<%= r["id"] %>/delete?<%= request.query_string %>">
-              <button class="btn btn-sm btn-outline-danger" onclick="return confirm('Soft-delete this command?')">Delete</button>
+              <button class="btn btn-sm btn-outline-danger"
+                      onclick="return confirm('Soft-delete this command?')">Delete</button>
             </form>
           <% else %>
             <form class="d-inline" method="post" action="/commands/<%= r["id"] %>/restore?<%= request.query_string %>">
@@ -72,11 +88,17 @@
 <nav>
   <ul class="pagination">
     <li class="page-item <%= 'disabled' if page<=1 %>">
-      <a class="page-link" href="?category_id=<%= h(@category_id) %>&per=<%= per_page %>&show_deleted=<%= show_deleted? ? 1 : 0 %>&page=<%= [page-1,1].max %>">Prev</a>
+      <a class="page-link"
+         href="?category_id=<%= h(@category_id) %>&per=<%= per_page %>&show_deleted=<%= show_deleted? ? 1 : 0 %>&page=<%= [page-1,1].max %>">
+        Prev
+      </a>
     </li>
     <li class="page-item active"><span class="page-link"><%= page %></span></li>
     <li class="page-item">
-      <a class="page-link" href="?category_id=<%= h(@category_id) %>&per=<%= per_page %>&show_deleted=<%= show_deleted? ? 1 : 0 %>&page=<%= page+1 %>">Next</a>
+      <a class="page-link"
+         href="?category_id=<%= h(@category_id) %>&per=<%= per_page %>&show_deleted=<%= show_deleted? ? 1 : 0 %>&page=<%= page+1 %>">
+        Next
+      </a>
     </li>
   </ul>
 </nav>
