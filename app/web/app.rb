@@ -4,6 +4,7 @@
 #             Includes "Show deleted" toggle for Terms/Commands/Examples
 #   Author:   ChatGPT (GPT-4.1)
 #   Date:     2025-10-28
+#   Upfated:  2025-10-31
 ################################################################################
 # frozen_string_literal: true
 
@@ -297,6 +298,135 @@ class GlossaryApp < Sinatra::Base
       SQL
       conn.exec_query(sql).to_a
     end
+
+        # Counts for Terms in a category (filtered vs total)
+    # Returns: { filtered: Integer, total: Integer }
+    def category_terms_counts(category_id:, q:)
+      conn = ActiveRecord::Base.connection
+      cat_id = category_id.to_i
+      # total respects Show deleted toggle
+      total_sql = <<~SQL
+        SELECT COUNT(*) AS cnt
+        FROM terms t
+        WHERE t.category_id = #{cat_id}
+          AND #{show_deleted? ? "1=1" : "t.deleted_on IS NULL"}
+      SQL
+      total = conn.select_value(total_sql).to_i
+
+      q = q.to_s.strip
+      if q.empty?
+        { filtered: total, total: total }
+      else
+        filtered_sql = <<~SQL
+          SELECT COUNT(*) AS cnt
+          FROM terms_fts
+          JOIN terms t ON terms_fts.rowid = t.id
+          WHERE t.category_id = #{cat_id}
+            AND #{show_deleted? ? "1=1" : "t.deleted_on IS NULL"}
+            AND terms_fts MATCH #{conn.quote(q)}
+        SQL
+        { filtered: conn.select_value(filtered_sql).to_i, total: total }
+      end
+    end
+
+    # Counts for Commands in a category (filtered vs total)
+    # Returns: { filtered: Integer, total: Integer }
+    def category_commands_counts(category_id:, q:)
+      conn = ActiveRecord::Base.connection
+      cat_id = category_id.to_i
+      base_where = ["cmd.category_id = #{cat_id}", (show_deleted? ? "1=1" : "cmd.deleted_on IS NULL")]
+
+      total_sql = <<~SQL
+        SELECT COUNT(*) AS cnt
+        FROM commands cmd
+        WHERE #{base_where.join(" AND ")}
+      SQL
+      total = conn.select_value(total_sql).to_i
+
+      q = q.to_s.strip
+      if q.empty?
+        { filtered: total, total: total }
+      else
+        pat = conn.quote("%#{q}%")
+        where = base_where + ["(LOWER(cmd.title) LIKE LOWER(#{pat}) OR LOWER(IFNULL(cmd.descr_en,'')) LIKE LOWER(#{pat}) OR LOWER(IFNULL(cmd.descr_ru,'')) LIKE LOWER(#{pat}))"]
+        filtered_sql = <<~SQL
+          SELECT COUNT(*) AS cnt
+          FROM commands cmd
+          WHERE #{where.join(" AND ")}
+        SQL
+        { filtered: conn.select_value(filtered_sql).to_i, total: total }
+      end
+    end
+
+    # Terms in a category: FTS when q present (with highlight); simple list otherwise
+    def category_terms_query(category_id:, q:, limit: 50, offset: 0)
+      conn = ActiveRecord::Base.connection
+      cat_id = category_id.to_i
+      q = q.to_s.strip
+      if q.empty?
+        where = ["t.category_id = #{cat_id}", (show_deleted? ? "1=1" : "t.deleted_on IS NULL")]
+        sql = <<~SQL
+          SELECT t.*, c.name_en AS category_name
+          FROM terms t
+          JOIN categories c ON c.id = t.category_id
+          WHERE #{where.join(" AND ")}
+          ORDER BY t.en COLLATE NOCASE
+          LIMIT #{limit} OFFSET #{offset}
+        SQL
+        conn.exec_query(sql).to_a
+      else
+        where = ["t.category_id = #{cat_id}", (show_deleted? ? "1=1" : "t.deleted_on IS NULL")]
+        sql = <<~SQL
+          SELECT t.*, c.name_en AS category_name,
+                 bm25(terms_fts) AS rank,
+                 highlight(terms_fts, 0, '<mark>', '</mark>') AS en_hl,
+                 highlight(terms_fts, 1, '<mark>', '</mark>') AS ru_hl
+          FROM terms_fts
+          JOIN terms t      ON terms_fts.rowid = t.id
+          JOIN categories c ON c.id = t.category_id
+          WHERE #{where.join(" AND ")}
+            AND terms_fts MATCH #{conn.quote(q)}
+          ORDER BY rank
+          LIMIT #{limit} OFFSET #{offset}
+        SQL
+        conn.exec_query(sql).to_a
+      end
+    end
+
+    # Commands in a category: LIKE-based search when q present; simple list otherwise
+    def category_commands_query(category_id:, q:, limit: 50, offset: 0)
+      conn = ActiveRecord::Base.connection
+      cat_id = category_id.to_i
+      q = q.to_s.strip
+      base_where = ["cmd.category_id = #{cat_id}", (show_deleted? ? "1=1" : "cmd.deleted_on IS NULL")]
+
+      if q.empty?
+        sql = <<~SQL
+          SELECT cmd.*, c.name_en AS category_name
+          FROM commands cmd
+          JOIN categories c ON c.id = cmd.category_id
+          WHERE #{base_where.join(" AND ")}
+          ORDER BY cmd.title COLLATE NOCASE
+          LIMIT #{limit} OFFSET #{offset}
+        SQL
+        return conn.exec_query(sql).to_a
+      end
+
+      pat = conn.quote("%#{q}%")
+      where = base_where + ["(LOWER(cmd.title) LIKE LOWER(#{pat}) OR LOWER(IFNULL(cmd.descr_en,'')) LIKE LOWER(#{pat}) OR LOWER(IFNULL(cmd.descr_ru,'')) LIKE LOWER(#{pat}))"]
+      sql = <<~SQL
+        SELECT cmd.*, c.name_en AS category_name,
+               (CASE WHEN LOWER(cmd.title) LIKE LOWER(#{pat}) THEN 2 ELSE 0 END
+                + CASE WHEN LOWER(IFNULL(cmd.descr_en,'')) LIKE LOWER(#{pat}) THEN 1 ELSE 0 END
+                + CASE WHEN LOWER(IFNULL(cmd.descr_ru,'')) LIKE LOWER(#{pat}) THEN 1 ELSE 0 END) AS score
+        FROM commands cmd
+        JOIN categories c ON c.id = cmd.category_id
+        WHERE #{where.join(" AND ")}
+        ORDER BY score DESC, cmd.title COLLATE NOCASE
+        LIMIT #{limit} OFFSET #{offset}
+      SQL
+      conn.exec_query(sql).to_a
+    end
   end
 
   # Root → Terms
@@ -316,9 +446,11 @@ class GlossaryApp < Sinatra::Base
     erb :"terms/index"
   end
 
+  # New Term (preselect category if provided)
   get "/terms/new" do
     @categories = categories_for_select
-    @term = Term.new
+    pre_id = (params[:category_id] || params[:preselect_category_id]).to_s
+    @term = Term.new(category_id: pre_id.presence || nil)
     erb :"terms/new"
   end
 
@@ -442,17 +574,23 @@ class GlossaryApp < Sinatra::Base
     redirect "/categories?#{request.query_string}"
   end
 
-  # Category details: show its Terms and Commands with counts and quick filters
+  # Category details with tabs (Terms | Commands), counts, and quick filters
   get "/categories/:id" do
     @category = Category.find(params[:id])
-    @t_q = params[:t_q].to_s       # quick filter for terms
-    @c_q = params[:c_q].to_s       # quick filter for commands
-    @counts = category_counts(@category.id)
+    @active_tab = params[:tab].to_s
+    @active_tab = "terms" unless %w[terms commands].include?(@active_tab)
 
+    @t_q = params[:t_q].to_s  # filter for terms
+    @c_q = params[:c_q].to_s  # filter for commands
+
+    # Counts (filtered vs total) per section
+    @terms_counts    = category_terms_counts(category_id: @category.id, q: @t_q)
+    @commands_counts = category_commands_counts(category_id: @category.id, q: @c_q)
+
+    # Data (lists)
     lim = per_page
     off = offset
-
-    @term_rows    = category_terms_query(category_id: @category.id,   q: @t_q, limit: lim, offset: off)
+    @term_rows    = category_terms_query(category_id: @category.id, q: @t_q, limit: lim, offset: off)
     @command_rows = category_commands_query(category_id: @category.id, q: @c_q, limit: lim, offset: off)
 
     erb :"categories/show"
@@ -469,9 +607,11 @@ class GlossaryApp < Sinatra::Base
     erb :"commands/index"
   end
 
+  # New Command (preselect category if provided)
   get "/commands/new" do
     @categories = categories_for_select
-    @command = Command.new
+    pre_id = (params[:category_id] || params[:preselect_category_id]).to_s
+    @command = Command.new(category_id: pre_id.presence || nil)
     erb :"commands/new"
   end
 

@@ -4,6 +4,7 @@
 #   Purpose:  Categories list + "Show deleted" toggle + pagination + CRUD actions
 #   Author:   ChatGPT (GPT-4.1)
 #   Date:     2025-10-28
+#   Upfated:  2025-10-31
 ################################################################################
 %>
 
@@ -48,9 +49,7 @@
     <% else %>
       <% @rows.each do |r| %>
         <tr class="<%= r["deleted_on"] ? "table-warning" : "" %>">
-          <td>
-            <a href="/categories/<%= r["id"] %>"><%= h(r["name_en"]) %></a>
-          </td>
+          <td><a href="/categories/<%= r["id"] %>"><%= h(r["name_en"]) %></a></td>
           <td><%= h(r["name_ru"]) %></td>
           <td class="small text-muted">
             <div><strong>created:</strong> <%= h(r["created_at"]) %></div>

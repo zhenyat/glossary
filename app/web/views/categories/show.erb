@@ -1,11 +1,15 @@
 <%#
 ################################################################################
 #   File:     app/web/views/categories/show.erb
-#   Purpose:  Category details + Terms and Commands lists with counts and filters
+#   Purpose:  Category details with tabs (Terms | Commands), counts, filters,
+#             and "New in this category" links (preselect category)
 #   Author:   ChatGPT (GPT-4.1)
-#   Date:     2025-10-28
+#   Date:     2025-10-31
+#   Upfated:  2025-10-31
 ################################################################################
 %>
+
+<% qbase = { per: per_page, show_deleted: (show_deleted? ? 1 : 0), page: page } %>
 
 <div class="d-flex justify-content-between align-items-center mb-2">
   <h3>
@@ -15,6 +19,10 @@
     <% end %>
   </h3>
   <div class="d-flex gap-2">
+    <%# New in this category (preselect category on forms) %>
+    <a class="btn btn-sm btn-success" href="/terms/new?<%= Rack::Utils.build_query(category_id: @category.id) %>">New term in this category</a>
+    <a class="btn btn-sm btn-success" href="/commands/new?<%= Rack::Utils.build_query(category_id: @category.id) %>">New command in this category</a>
+
     <% if @category.deleted_on.nil? %>
       <form class="d-inline" method="post" action="/categories/<%= @category.id %>/delete?<%= request.query_string %>">
         <button class="btn btn-sm btn-outline-danger" onclick="return confirm('Soft-delete this category?')">Delete</button>
@@ -38,138 +46,143 @@
   <% end %>
 </p>
 
-<div class="row g-3 mb-3">
-  <div class="col-md-6">
-    <div class="card h-100">
-      <div class="card-body">
-        <h5 class="card-title mb-3">
-          Terms
-          <span class="badge text-bg-secondary"><%= @counts[:terms_active] %> active</span>
-          <span class="badge text-bg-light border"><%= @counts[:terms_total] %> total</span>
-        </h5>
-        <form class="row g-2 mb-2" method="get" action="/categories/<%= @category.id %>">
-          <div class="col-md-7">
-            <input class="form-control" type="text" name="t_q" value="<%= h(@t_q) %>"
-                   placeholder="Filter terms (FTS: en:..., ru:..., json OR yaml)">
-          </div>
-          <div class="col-md-3 d-flex align-items-center">
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="show_deleted_terms" name="show_deleted" value="1" <%= "checked" if show_deleted? %>>
-              <label class="form-check-label" for="show_deleted_terms">Show deleted</label>
-            </div>
-          </div>
-          <div class="col-md-2 d-grid">
-            <button class="btn btn-outline-primary">Apply</button>
-          </div>
-          <%# Keep other params %>
-          <input type="hidden" name="c_q" value="<%= h(@c_q) %>">
-          <input type="hidden" name="per" value="<%= per_page %>">
-          <input type="hidden" name="page" value="<%= page %>">
-        </form>
+<ul class="nav nav-tabs mb-3">
+  <li class="nav-item">
+    <a class="nav-link <%= @active_tab == 'terms' ? 'active' : '' %>"
+       href="/categories/<%= @category.id %>?<%= Rack::Utils.build_query(qbase.merge(tab: 'terms', t_q: @t_q, c_q: @c_q)) %>">
+      Terms
+      <span class="badge text-bg-secondary ms-1"><%= @terms_counts[:filtered] %></span>
+      <span class="badge text-bg-light border">/ <%= @terms_counts[:total] %></span>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link <%= @active_tab == 'commands' ? 'active' : '' %>"
+       href="/categories/<%= @category.id %>?<%= Rack::Utils.build_query(qbase.merge(tab: 'commands', t_q: @t_q, c_q: @c_q)) %>">
+      Commands
+      <span class="badge text-bg-secondary ms-1"><%= @commands_counts[:filtered] %></span>
+      <span class="badge text-bg-light border">/ <%= @commands_counts[:total] %></span>
+    </a>
+  </li>
+</ul>
 
-        <div class="table-responsive">
-          <table class="table table-sm table-hover align-middle">
-            <thead>
-              <tr>
-                <th style="width: 28%">EN</th>
-                <th style="width: 28%">RU</th>
-                <th>Descr (EN)</th>
-                <th style="width: 12%"></th>
-              </tr>
-            </thead>
-            <tbody>
-              <% if @term_rows.empty? %>
-                <tr><td colspan="4" class="text-muted">No terms found.</td></tr>
-              <% else %>
-                <% @term_rows.each do |r| %>
-                  <tr class="<%= r["deleted_on"] ? "table-warning" : "" %>">
-                    <td><%= (r["en_hl"] && !r["en_hl"].empty?) ? r["en_hl"] : h(r["en"]) %></td>
-                    <td><%= (r["ru_hl"] && !r["ru_hl"].empty?) ? r["ru_hl"] : h(r["ru"]) %></td>
-                    <td><%= h(r["descr_en"].to_s[0,120]) %></td>
-                    <td class="text-end">
-                      <a class="btn btn-sm btn-outline-secondary" href="/terms/<%= r["id"] %>/edit">Edit</a>
-                    </td>
-                  </tr>
-                <% end %>
-              <% end %>
-            </tbody>
-          </table>
+<% if @active_tab == 'terms' %>
+  <div class="card mb-3">
+    <div class="card-body">
+      <form class="row g-2" method="get" action="/categories/<%= @category.id %>">
+        <div class="col-md-6">
+          <input class="form-control" type="text" name="t_q" value="<%= h(@t_q) %>" placeholder="Filter terms (FTS: en:..., ru:..., json OR yaml)">
         </div>
-      </div>
+        <div class="col-md-3 d-flex align-items-center">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="show_deleted" name="show_deleted" value="1" <%= "checked" if show_deleted? %>>
+            <label class="form-check-label" for="show_deleted">Show deleted</label>
+          </div>
+        </div>
+        <div class="col-md-3 d-grid">
+          <button class="btn btn-primary">Apply</button>
+        </div>
+        <%# keep other params %>
+        <input type="hidden" name="tab" value="terms">
+        <input type="hidden" name="c_q" value="<%= h(@c_q) %>">
+        <input type="hidden" name="per" value="<%= per_page %>">
+        <input type="hidden" name="page" value="<%= page %>">
+      </form>
     </div>
   </div>
 
-  <div class="col-md-6">
-    <div class="card h-100">
-      <div class="card-body">
-        <h5 class="card-title mb-3">
-          Commands
-          <span class="badge text-bg-secondary"><%= @counts[:commands_active] %> active</span>
-          <span class="badge text-bg-light border"><%= @counts[:commands_total] %> total</span>
-        </h5>
-        <form class="row g-2 mb-2" method="get" action="/categories/<%= @category.id %>">
-          <div class="col-md-7">
-            <input class="form-control" type="text" name="c_q" value="<%= h(@c_q) %>"
-                   placeholder="Filter commands (title/descr)">
-          </div>
-          <div class="col-md-3 d-flex align-items-center">
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="show_deleted_cmds" name="show_deleted" value="1" <%= "checked" if show_deleted? %>>
-              <label class="form-check-label" for="show_deleted_cmds">Show deleted</label>
-            </div>
-          </div>
-          <div class="col-md-2 d-grid">
-            <button class="btn btn-outline-primary">Apply</button>
-          </div>
-          <%# Keep other params %>
-          <input type="hidden" name="t_q" value="<%= h(@t_q) %>">
-          <input type="hidden" name="per" value="<%= per_page %>">
-          <input type="hidden" name="page" value="<%= page %>">
-        </form>
-
-        <div class="table-responsive">
-          <table class="table table-sm table-hover align-middle">
-            <thead>
-              <tr>
-                <th style="width: 32%">Title</th>
-                <th>Descr (EN)</th>
-                <th style="width: 12%"></th>
-              </tr>
-            </thead>
-            <tbody>
-              <% if @command_rows.empty? %>
-                <tr><td colspan="3" class="text-muted">No commands found.</td></tr>
-              <% else %>
-                <% @command_rows.each do |r| %>
-                  <tr class="<%= r["deleted_on"] ? "table-warning" : "" %>">
-                    <td><%= h(r["title"]) %></td>
-                    <td><%= h(r["descr_en"].to_s[0,120]) %></td>
-                    <td class="text-end">
-                      <a class="btn btn-sm btn-outline-secondary" href="/commands/<%= r["id"] %>/edit">Edit</a>
-                    </td>
-                  </tr>
-                <% end %>
-              <% end %>
-            </tbody>
-          </table>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle">
+      <thead>
+        <tr>
+          <th style="width: 28%">EN</th>
+          <th style="width: 28%">RU</th>
+          <th>Descr (EN)</th>
+          <th style="width: 12%"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% if @term_rows.empty? %>
+          <tr><td colspan="4" class="text-muted">No terms found.</td></tr>
+        <% else %>
+          <% @term_rows.each do |r| %>
+            <tr class="<%= r["deleted_on"] ? "table-warning" : "" %>">
+              <td><%= (r["en_hl"] && !r["en_hl"].empty?) ? r["en_hl"] : h(r["en"]) %></td>
+              <td><%= (r["ru_hl"] && !r["ru_hl"].empty?) ? r["ru_hl"] : h(r["ru"]) %></td>
+              <td><%= h(r["descr_en"].to_s[0,120]) %></td>
+              <td class="text-end">
+                <a class="btn btn-sm btn-outline-secondary" href="/terms/<%= r["id"] %>/edit">Edit</a>
+              </td>
+            </tr>
+          <% end %>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+<% else %>
+  <div class="card mb-3">
+    <div class="card-body">
+      <form class="row g-2" method="get" action="/categories/<%= @category.id %>">
+        <div class="col-md-6">
+          <input class="form-control" type="text" name="c_q" value="<%= h(@c_q) %>" placeholder="Filter commands (title/descr)">
         </div>
-      </div>
+        <div class="col-md-3 d-flex align-items-center">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="show_deleted" name="show_deleted" value="1" <%= "checked" if show_deleted? %>>
+            <label class="form-check-label" for="show_deleted">Show deleted</label>
+          </div>
+        </div>
+        <div class="col-md-3 d-grid">
+          <button class="btn btn-primary">Apply</button>
+        </div>
+        <%# keep other params %>
+        <input type="hidden" name="tab" value="commands">
+        <input type="hidden" name="t_q" value="<%= h(@t_q) %>">
+        <input type="hidden" name="per" value="<%= per_page %>">
+        <input type="hidden" name="page" value="<%= page %>">
+      </form>
     </div>
   </div>
-</div>
+
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle">
+      <thead>
+        <tr>
+          <th style="width: 32%">Title</th>
+          <th>Descr (EN)</th>
+          <th style="width: 12%"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% if @command_rows.empty? %>
+          <tr><td colspan="3" class="text-muted">No commands found.</td></tr>
+        <% else %>
+          <% @command_rows.each do |r| %>
+            <tr class="<%= r["deleted_on"] ? "table-warning" : "" %>">
+              <td><%= h(r["title"]) %></td>
+              <td><%= h(r["descr_en"].to_s[0,120]) %></td>
+              <td class="text-end">
+                <a class="btn btn-sm btn-outline-secondary" href="/commands/<%= r["id"] %>/edit">Edit</a>
+              </td>
+            </tr>
+          <% end %>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+<% end %>
 
 <nav>
   <ul class="pagination">
     <li class="page-item <%= 'disabled' if page<=1 %>">
       <a class="page-link"
-         href="?t_q=<%= h(@t_q) %>&c_q=<%= h(@c_q) %>&per=<%= per_page %>&show_deleted=<%= show_deleted? ? 1 : 0 %>&page=<%= [page-1,1].max %>">
+         href="/categories/<%= @category.id %>?<%= Rack::Utils.build_query(qbase.merge(tab: @active_tab, t_q: @t_q, c_q: @c_q, page: [page-1,1].max)) %>">
         Prev
       </a>
     </li>
     <li class="page-item active"><span class="page-link"><%= page %></span></li>
     <li class="page-item">
       <a class="page-link"
-         href="?t_q=<%= h(@t_q) %>&c_q=<%= h(@c_q) %>&per=<%= per_page %>&show_deleted=<%= show_deleted? ? 1 : 0 %>&page=<%= page+1 %>">
+         href="/categories/<%= @category.id %>?<%= Rack::Utils.build_query(qbase.merge(tab: @active_tab, t_q: @t_q, c_q: @c_q, page: page+1)) %>">
         Next
       </a>
     </li>
